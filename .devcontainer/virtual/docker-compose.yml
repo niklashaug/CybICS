@@ -244,7 +244,7 @@ services:
     profiles:
       - firmware-update-environment
     ports:
-      - 6689:6689
+      - 6689:80
     networks:
       virt-cybics:
         ipv4_address: 172.18.0.9

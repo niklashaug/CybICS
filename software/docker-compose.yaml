@@ -128,7 +128,7 @@ services:
     volumes:
       - firmware_data:/opt/cybics/update-server/firmware
     ports:
-      - "6689:6689"
+      - "6689:80"
     networks:
       br-cybics:
         ipv4_address: 172.18.0.9
