@@ -105,6 +105,7 @@ services:
     mem_limit: 64m
     depends_on:
       - stm32
+      - update-server
     volumes:
       - firmware_data:/opt/cybics/firmware
       - firmware_keys:/opt/cybics/keys
