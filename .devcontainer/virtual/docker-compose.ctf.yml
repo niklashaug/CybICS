@@ -1,0 +1,36 @@
+# CTF override – wird zusammen mit docker-compose.yml verwendet:
+#   docker compose -f docker-compose.yml -f docker-compose.ctf.yml up -d
+#
+# Effekt:
+#   - ICS-Container verlieren ihre Host-Port-Mappings (nur noch über Router erreichbar)
+#   - Attack-Machine wird aus virt-cybics rausgenommen
+#   - Landing bleibt auf Port 80 (Instructor-Zugriff)
+
+services:
+  openplc:
+    ports: !reset []
+
+  opcua:
+    ports: !reset []
+
+  s7com:
+    ports: !reset []
+
+  fuxa:
+    ports: !reset []
+
+  hwio:
+    ports: !reset []
+
+  stm32:
+    ports: !reset []
+
+  firmware-updater:
+    ports: !reset []
+
+  update-server:
+    ports: !reset []
+
+  # attack-machine:
+  #   networks:
+  #     virt-cybics: null
