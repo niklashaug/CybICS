@@ -8,7 +8,7 @@ set -uo pipefail
 # --- Config ---
 ROUTER_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROUTER_CONTAINER="${ROUTER_CONTAINER:-open-wrt-openwrt-1}"
-INT_NET="${INT_NET:-virtual_virt-cybics}"
+INT_NET="${INT_NET:-}"
 EXT_NET="${EXT_NET:-ext_ctf}"
 EXT_SUBNET="172.22.0.0/24"
 EXT_GATEWAY="172.22.0.1"
@@ -16,6 +16,16 @@ ROUTER_INT_IP="172.18.0.50"
 ROUTER_EXT_IP="172.22.0.2"
 ATTACK_EXT_IP="172.22.0.100"
 ATTACK_CONTAINER="${ATTACK_CONTAINER:-attack-machine}"
+
+detect_int_net() {
+    for candidate in virtual_virt-cybics br-cybics virt-cybics; do
+        if docker network ls --format '{{.Name}}' | grep -q "^${candidate}$"; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
 
 check_router_ssh() {
     if command -v nc >/dev/null 2>&1; then
@@ -69,8 +79,12 @@ cleanup_router_state() {
 do_start() {
     echo "Starting CTF router challenge..."
 
+    if [ -z "$INT_NET" ]; then
+        INT_NET="$(detect_int_net || true)"
+    fi
+
     # CybICS muss laufen
-    if ! docker network ls --format '{{.Name}}' | grep -q "$INT_NET"; then
+    if [ -z "$INT_NET" ] || ! docker network ls --format '{{.Name}}' | grep -q "^${INT_NET}$"; then
         echo "ERROR: $INT_NET not found. Start CybICS first."
         exit 1
     fi
@@ -110,7 +124,7 @@ do_start() {
     echo "CTF router challenge running."
     echo ""
     echo "Router:"
-    echo "  internal  $ROUTER_INT_IP (virt-cybics)"
+    echo "  internal  $ROUTER_INT_IP (br-cybics)"
     echo "  external  $ROUTER_EXT_IP (ext_ctf)"
     echo "  SSH       localhost:2222 (root/password)"
     echo ""

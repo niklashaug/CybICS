@@ -30,7 +30,7 @@ if [ "$ARCH" = "aarch64" ]; then
         -device virtio-net-pci,netdev=n0 \
         -netdev tap,id=n1,ifname=tap1,script=no,downscript=no \
         -device virtio-net-pci,netdev=n1 \
-        -netdev user,id=n2,hostfwd=tcp::2222-:22 \
+        -netdev user,id=n2,hostfwd=tcp::2222-:22,hostfwd=tcp::8080-:8080 \
         -device virtio-net-pci,netdev=n2
 else
     exec qemu-system-x86_64 \
@@ -42,6 +42,6 @@ else
         -device e1000,netdev=n0 \
         -netdev tap,id=n1,ifname=tap1,script=no,downscript=no \
         -device e1000,netdev=n1 \
-        -netdev user,id=n2,hostfwd=tcp::2222-:22 \
+        -netdev user,id=n2,hostfwd=tcp::2222-:22,hostfwd=tcp::8080-:8080 \
         -device e1000,netdev=n2
 fi
