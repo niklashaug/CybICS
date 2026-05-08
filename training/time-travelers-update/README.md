@@ -268,12 +268,12 @@ strings gateway_service
 
 4. Monitor traffic:
 ```bash
-tcpdump -i eth1
+tcpdump -i eth2
 ```
 
 5. Identify update URL:
 ```
-http://updateserver/firmware.bin
+http://172.18.0.50:8080/api/v1/firmware/latest
 ```
 
 6. Extract firmware:
