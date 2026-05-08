@@ -228,6 +228,7 @@ services:
         ipv4_address: 172.18.0.8
     profiles:
       - firmware-update-environment
+      - full
 
   update-server:
     image: mniedermaier1337/cybics-update-server:${CYBICS_VERSION:-latest}
@@ -243,6 +244,7 @@ services:
       - firmware_data:/opt/cybics/update-server/firmware
     profiles:
       - firmware-update-environment
+      - full
     ports:
       - 6689:80
     networks:
@@ -267,6 +269,7 @@ services:
         ipv4_address: 172.18.0.7
     profiles:
       - firmware-update-environment
+      - full
 
 networks:
   virt-cybics:
