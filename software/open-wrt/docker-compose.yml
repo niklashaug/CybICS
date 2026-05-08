@@ -17,6 +17,9 @@ services:
         ipv4_address: 172.20.0.2
       virt-cybics:
         ipv4_address: 172.21.0.2
+    profiles:
+      - firmware-update-environment
+      - full
 
 networks:
   ext_net:
