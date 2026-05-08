@@ -414,7 +414,7 @@ case "$CYBICS_MODE" in
         export COMPOSE_PROFILES=""
         ;;
     "full")
-        export COMPOSE_PROFILES="full,attack,engineering,ai"
+        export COMPOSE_PROFILES="attack,engineering,ids,ai"
         ;;
     "withoutai")
         export COMPOSE_PROFILES="attack,engineering"
@@ -458,4 +458,4 @@ case "$COMMAND" in
     *)
         show_help
         ;;
-esac 
+esac
