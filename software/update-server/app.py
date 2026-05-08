@@ -1,3 +1,4 @@
+import hashlib
 import os
 from pathlib import Path
 
@@ -17,19 +18,34 @@ def _get_firmware_version() -> str:
     return os.environ.get("FIRMWARE_VERSION", "1.2.1")
 
 
-def _get_firmware_mac() -> str:
-    mac = os.environ.get("FIRMWARE_MAC", "").strip()
-    if not mac:
-        raise HTTPException(status_code=500, detail="FIRMWARE_MAC is not configured")
-    return mac
-
-
 def _get_firmware_path() -> Path:
     return Path(
         os.environ.get(
             "FIRMWARE_PATH", "/opt/cybics/update-server/firmware/firmware.bin"
         )
     )
+
+
+def _get_secret_path() -> Path:
+    return Path(os.environ.get("SECRET_PATH", "/opt/cybics/secrets/secret.bin"))
+
+
+def _read_secret_key() -> bytes:
+    secret_path = _get_secret_path()
+    if not secret_path.is_file():
+        raise HTTPException(status_code=500, detail="MAC secret is not available")
+    return secret_path.read_bytes()
+
+
+def _read_firmware_bytes() -> bytes:
+    firmware_path = _get_firmware_path()
+    if not firmware_path.is_file():
+        raise HTTPException(status_code=500, detail="Firmware file is not available")
+    return firmware_path.read_bytes()
+
+
+def _compute_firmware_mac(firmware: bytes, secret: bytes) -> str:
+    return hashlib.md5(secret + firmware).hexdigest()
 
 
 def create_app() -> FastAPI:
@@ -50,9 +66,11 @@ def create_app() -> FastAPI:
     )
     def get_latest_firmware() -> LatestFirmwareResponse:
         version = _get_firmware_version()
+        firmware = _read_firmware_bytes()
+        mac = _compute_firmware_mac(firmware, _read_secret_key())
         return LatestFirmwareResponse(
             version=version,
-            mac=_get_firmware_mac(),
+            mac=mac,
             url=f"/api/v1/firmware/download/{version}",
         )
 
@@ -87,14 +105,13 @@ def create_app() -> FastAPI:
         if version != expected_version:
             raise HTTPException(status_code=404, detail="Firmware version not found")
 
-        firmware_path = _get_firmware_path()
-        if not firmware_path.is_file():
-            raise HTTPException(status_code=500, detail="Firmware file is not available")
+        firmware = _read_firmware_bytes()
+        mac = _compute_firmware_mac(firmware, _read_secret_key())
 
         return Response(
-            content=firmware_path.read_bytes(),
+            content=firmware,
             media_type="application/octet-stream",
-            headers={"X-Firmware-MAC": _get_firmware_mac()},
+            headers={"X-Firmware-MAC": mac},
         )
 
     return app

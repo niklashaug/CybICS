@@ -227,11 +227,11 @@ def poll_for_update(config: dict, secret: bytes) -> bool:
 def main() -> None:
     config = load_config(CONFIG_PATH)
 
-    key_path = config["security"]["key_path"]
+    secret_path = config["security"]["secret_path"]
     try:
-        secret = load_secret_key(key_path)
+        secret = load_secret_key(secret_path)
     except FileNotFoundError:
-        logger.error("MAC secret key not found at %s", key_path)
+        logger.error("MAC secret not found at %s", secret_path)
         raise
 
     poll_interval = int(config["update_server"].get("poll_interval", 30))
