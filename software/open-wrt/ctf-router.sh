@@ -82,7 +82,7 @@ do_start() {
         --gateway "$EXT_GATEWAY" \
         "$EXT_NET"
 
-    (cd "$SCRIPT_DIR" && docker compose up -d --build --remove-orphans)
+    (cd "$SCRIPT_DIR" && docker compose --profile full up -d --build --remove-orphans)
     
     docker network connect --ip "$ROUTER_INT_IP" "$INT_NET" "$ROUTER_CONTAINER" 2>/dev/null || true
 
