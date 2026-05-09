@@ -10,7 +10,7 @@ update_server:
   # Base URL of the firmware update endpoint.
   # Under normal CTF operation this server does not exist (returns 404).
   # Attackers redirect this hostname to their rogue server.
-  url: "http://update.cybics:8080"
+  url: "http://update.cybics:6689"
   endpoint: "/api/v1/firmware/latest"
   # Polling interval in seconds
   poll_interval: 30

@@ -1,5 +1,10 @@
 #!/bin/sh
 
+UPDATE_CYBICS_IP="${UPDATE_CYBICS_IP:-172.18.0.9}"
+
+# Provide DNS for containers that use OpenWrt as resolver.
+dnsmasq --address="/update.cybics/${UPDATE_CYBICS_IP}"
+
 ip tuntap add dev tap0 mode tap
 ip tuntap add dev tap1 mode tap
 
