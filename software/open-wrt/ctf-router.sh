@@ -131,7 +131,8 @@ do_stop() {
     docker compose \
         -f "$CYBICS_COMPOSE_FILE" \
         --profile "$COMPOSE_PROFILES" \
-        up -d --remove-orphans
+        up -d --remove-orphans \
+        openplc fuxa hwio opcua s7com stm32 firmware-updater update-server
 
     attack=$(find_container "$ATTACK_CONTAINER")
     if [ -n "$attack" ]; then
