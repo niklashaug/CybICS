@@ -190,7 +190,6 @@ services:
         ipv4_address: 172.18.0.11
     profiles:
       - ai
-      - full
 
   ids:
     image: mniedermaier1337/cybics-ids:${CYBICS_VERSION:-latest}
@@ -216,6 +215,7 @@ services:
     restart: "no"
     depends_on:
       - stm32
+      - update-server
     volumes:
       - firmware_data:/opt/cybics/firmware
       - firmware_secrets:/opt/cybics/secrets
