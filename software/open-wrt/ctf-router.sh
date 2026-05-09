@@ -7,7 +7,6 @@ CYBICS_COMPOSE="$CYBICS_DIR/.devcontainer/virtual/docker-compose.yml"
 CTF_OVERRIDE="$CYBICS_DIR/.devcontainer/virtual/docker-compose.ctf.yml"
 
 ROUTER_CONTAINER="${ROUTER_CONTAINER:-open-wrt-openwrt-1}"
-# Hier den Standardnamen deines internen Netzes eintragen, falls detect fehlschlägt
 INT_NET="${INT_NET:-virtual_virt-cybics}" 
 EXT_NET="${EXT_NET:-ext_ctf}"
 EXT_SUBNET="172.22.0.0/24"
@@ -17,8 +16,6 @@ ROUTER_EXT_IP="172.22.0.2"
 ATTACK_EXT_IP="172.22.0.100"
 ATTACK_CONTAINER="${ATTACK_CONTAINER:-attack-machine}"
 COMPOSE_PROFILES="${COMPOSE_PROFILES:-attack}"
-
-# --- HILFSFUNKTIONEN (Müssen da sein!) ---
 
 container_running() {
     docker ps --format '{{.Names}}' | grep -q "^${1}$"
@@ -52,18 +49,15 @@ wait_for_ssh() {
     return 1
 }
 
-# --- HAUPTFUNKTIONEN ---
 
 do_start() {
     echo "Starting CTF router challenge..."
 
-    # Check ob das interne Netzwerk existiert
     if ! docker network ls --format '{{.Name}}' | grep -q "^${INT_NET}$"; then
         echo "ERROR: Network '$INT_NET' not found. Start CybICS first."
         exit 1
     fi
 
-    # Alten Zustand aufräumen
     local attack
     attack=$(find_container "$ATTACK_CONTAINER")
     if [ -n "$attack" ]; then
@@ -74,7 +68,6 @@ do_start() {
     docker rm -f "$ROUTER_CONTAINER" 2>/dev/null || true
     docker network rm "$EXT_NET" 2>/dev/null || true
 
-    # ICS-Container neu hochfahren
     echo "Restarting ICS stack in CTF mode..."
     docker compose \
         -f "$CYBICS_COMPOSE" \
@@ -83,21 +76,16 @@ do_start() {
         up -d --remove-orphans --force-recreate \
         openplc fuxa hwio opcua s7com stm32 firmware-updater update-server landing
 
-    # ext_ctf Netz anlegen
     docker network create \
         --driver bridge \
         --subnet "$EXT_SUBNET" \
         --gateway "$EXT_GATEWAY" \
         "$EXT_NET"
 
-    # Router hochfahren
     (cd "$SCRIPT_DIR" && docker compose up -d --build --remove-orphans)
     
-    # WICHTIG: Verbindungen herstellen
     docker network connect --ip "$ROUTER_INT_IP" "$INT_NET" "$ROUTER_CONTAINER" 2>/dev/null || true
-    # (Hinweis: Falls die IP im Compose fest ist, reicht das Up oben, aber sicher ist sicher)
 
-    # Attack-Machine verbinden
     attack=$(find_container "$ATTACK_CONTAINER")
     if [ -n "$attack" ]; then
         container_in_network "$attack" "$EXT_NET" \
@@ -107,7 +95,82 @@ do_start() {
     wait_for_ssh || echo "Warning: SSH not confirmed."
 }
 
-# ... (do_stop, do_status, do_health wie gehabt, nur sicherstellen dass die Helfer oben stehen)
+do_stop() {
+    echo "Stopping CTF router challenge..."
+
+    ssh-keygen -f "$HOME/.ssh/known_hosts" -R "[127.0.0.1]:2222" 2>/dev/null || true
+
+    local attack
+    attack=$(find_container "$ATTACK_CONTAINER")
+    if [ -n "$attack" ]; then
+        # Attack-Machine vom CTF-Netz trennen
+        container_in_network "$attack" "$EXT_NET" \
+            && docker network disconnect "$EXT_NET" "$attack" 2>/dev/null || true
+    fi
+
+    (cd "$SCRIPT_DIR" && docker compose down --remove-orphans --timeout 5 2>/dev/null) || true
+    docker rm -f "$ROUTER_CONTAINER" 2>/dev/null || true
+    
+    docker network rm "$EXT_NET" 2>/dev/null || true
+
+    echo "Restarting ICS stack in normal mode (host ports restored)..."
+    docker compose \
+        -f "$CYBICS_COMPOSE" \
+        --profile "$COMPOSE_PROFILES" \
+        up -d --remove-orphans
+
+    attack=$(find_container "$ATTACK_CONTAINER")
+    if [ -n "$attack" ]; then
+        container_in_network "$attack" "$INT_NET" \
+            || docker network connect --ip "172.18.0.100" "$INT_NET" "$attack"
+    fi
+
+    echo "Done. Back to normal."
+}
+
+do_health() {
+    container_running "$ROUTER_CONTAINER" || { echo "router container not running"; exit 1; }
+    container_in_network "$ROUTER_CONTAINER" "$INT_NET" || { echo "router not in $INT_NET"; exit 1; }
+    container_in_network "$ROUTER_CONTAINER" "$EXT_NET" || { echo "router not in $EXT_NET"; exit 1; }
+    echo "router healthy"
+}
+
+do_status() {
+    echo "CTF Router Challenge status:"
+    echo ""
+
+    if container_running "$ROUTER_CONTAINER"; then
+        echo "  router:   running"
+        container_in_network "$ROUTER_CONTAINER" "$INT_NET" && echo "    -> $INT_NET  ($ROUTER_INT_IP)"
+        container_in_network "$ROUTER_CONTAINER" "$EXT_NET" && echo "    -> $EXT_NET  ($ROUTER_EXT_IP)"
+    else
+        echo "  router:   not running"
+    fi
+
+    if docker network ls --format '{{.Name}}' | grep -q "^${EXT_NET}$"; then
+        echo "  ext_ctf:  exists"
+    else
+        echo "  ext_ctf:  not created"
+    fi
+
+    local attack
+    attack=$(find_container "$ATTACK_CONTAINER")
+    if [ -n "$attack" ]; then
+        local in_ext in_int
+        container_in_network "$attack" "$EXT_NET" && in_ext=1 || in_ext=0
+        container_in_network "$attack" "$INT_NET" && in_int=1 || in_int=0
+        if [ "$in_ext" = "1" ] && [ "$in_int" = "0" ]; then
+            echo "  attack:   ctf mode (ext_ctf only)"
+        elif [ "$in_ext" = "0" ] && [ "$in_int" = "1" ]; then
+            echo "  attack:   normal (virt-cybics only)"
+        else
+            echo "  attack:   mixed"
+        fi
+    else
+        echo "  attack:   not found"
+    fi
+    echo ""
+}
 
 case "${1:-}" in
     start)  do_start ;;
