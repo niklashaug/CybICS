@@ -16,9 +16,9 @@ services:
       - "2222:2222"
     networks:
       ext_ctf:
-        ipv4_address: 172.22.0.2
+        ipv4_address: 172.22.0.254
       virt-cybics:
-        ipv4_address: 172.18.0.50
+        ipv4_address: 172.18.0.254
     profiles:
       - firmware-update-environment
       - full

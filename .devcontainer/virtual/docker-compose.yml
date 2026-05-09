@@ -117,6 +117,7 @@ services:
       - CYBICS_HEALTHCHECK_HOST=host.docker.internal
     volumes:
       - ../../.devcontainer:/workspace/.devcontainer:ro
+      - ../../software/open-wrt:/CybICS/scripts/open-wrt:ro
       - ${XDG_RUNTIME_DIR:-/var/run}/docker.sock:/var/run/docker.sock
     develop:
       watch:

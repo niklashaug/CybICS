@@ -34,6 +34,7 @@ COPY software/open-wrt/Dockerfile scripts/open-wrt/
 COPY software/open-wrt/99-wan-config scripts/open-wrt/
 COPY software/open-wrt/firmware-proxy.c scripts/open-wrt/
 COPY software/open-wrt/firmware-proxy.init scripts/open-wrt/
+COPY software/open-wrt/router-ssh.init scripts/open-wrt/
 COPY software/open-wrt/*.sh scripts/open-wrt/
 COPY software/open-wrt/docker-compose.yml scripts/open-wrt/
 RUN chmod +x scripts/open-wrt/*.sh

@@ -21,6 +21,7 @@ ROUTER_EXT_IP="172.22.0.2"
 ATTACK_EXT_IP="172.22.0.100"
 ATTACK_CONTAINER="${ATTACK_CONTAINER:-attack-machine}"
 COMPOSE_PROFILES="${COMPOSE_PROFILES:-attack}"
+ATTACK_INT_IP="172.18.0.100"
 
 container_running() {
     docker ps --format '{{.Names}}' | grep -q "^${1}$"
@@ -46,6 +47,28 @@ wait_for_ssh() {
                 echo " ready"
                 return 0
             fi
+        fi
+        printf "."
+        sleep 2
+    done
+    echo " timed out"
+    return 1
+}
+
+check_attack_ssh() {
+    local attack="$1"
+    [ -n "$attack" ] || return 1
+    docker exec "$attack" sh -c "nc -z -w1 $ROUTER_EXT_IP 22" >/dev/null 2>&1
+}
+
+wait_for_attack_ssh() {
+    local attack="$1"
+    local deadline=$(( $(date +%s) + 60 ))
+    printf "Waiting for attack-machine SSH path"
+    while [ "$(date +%s)" -lt "$deadline" ]; do
+        if check_attack_ssh "$attack"; then
+            echo " ready"
+            return 0
         fi
         printf "."
         sleep 2
@@ -98,15 +121,14 @@ do_start() {
 
     (cd "$SCRIPT_DIR" && docker compose --profile full up -d --build --remove-orphans)
 
-    docker network connect --ip "$ROUTER_INT_IP" "$INT_NET" "$ROUTER_CONTAINER" 2>/dev/null || true
-
     attack=$(find_container "$ATTACK_CONTAINER")
     if [ -n "$attack" ]; then
+        docker network disconnect "$INT_NET" "$attack" 2>/dev/null || true
         container_in_network "$attack" "$EXT_NET" \
             || docker network connect --ip "$ATTACK_EXT_IP" "$EXT_NET" "$attack"
     fi
 
-    # wait_for_ssh || echo "Warning: SSH not confirmed."
+    wait_for_attack_ssh "$attack" || echo "Warning: attack-machine SSH path not confirmed."
 }
 
 do_stop() {
@@ -137,7 +159,7 @@ do_stop() {
     attack=$(find_container "$ATTACK_CONTAINER")
     if [ -n "$attack" ]; then
         container_in_network "$attack" "$INT_NET" \
-            || docker network connect --ip "172.18.0.100" "$INT_NET" "$attack"
+            || docker network connect --ip "$ATTACK_INT_IP" "$INT_NET" "$attack"
     fi
 
     echo "Done. Back to normal."
@@ -147,6 +169,11 @@ do_health() {
     container_running "$ROUTER_CONTAINER" || { echo "router container not running"; exit 1; }
     container_in_network "$ROUTER_CONTAINER" "$INT_NET" || { echo "router not in $INT_NET"; exit 1; }
     container_in_network "$ROUTER_CONTAINER" "$EXT_NET" || { echo "router not in $EXT_NET"; exit 1; }
+    local attack
+    attack=$(find_container "$ATTACK_CONTAINER")
+    [ -n "$attack" ] || { echo "attack machine not found"; exit 1; }
+    container_in_network "$attack" "$EXT_NET" || { echo "attack machine not in $EXT_NET"; exit 1; }
+    check_attack_ssh "$attack" || { echo "router SSH not reachable from attack machine at $ROUTER_EXT_IP:22"; exit 1; }
     echo "router healthy"
 }
 
@@ -176,6 +203,9 @@ do_status() {
         container_in_network "$attack" "$INT_NET" && in_int=1 || in_int=0
         if [ "$in_ext" = "1" ] && [ "$in_int" = "0" ]; then
             echo "  attack:   ctf mode (ext_ctf only)"
+            check_attack_ssh "$attack" \
+                && echo "    -> router SSH reachable ($ROUTER_EXT_IP:22)" \
+                || echo "    -> router SSH not reachable ($ROUTER_EXT_IP:22)"
         elif [ "$in_ext" = "0" ] && [ "$in_int" = "1" ]; then
             echo "  attack:   normal (virt-cybics only)"
         else

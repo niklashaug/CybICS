@@ -1,31 +1,70 @@
 #!/bin/sh
+uci -q delete network.lan.type
+uci -q delete network.lan.ifname
+uci set network.lan.device='eth1'
+uci set network.lan.proto='static'
+uci set network.lan.ipaddr='172.18.0.50'
+uci set network.lan.netmask='255.255.255.0'
+
+uci -q delete network.wan.ifname
+uci set network.wan.device='eth0'
 uci set network.wan.proto='static'
 uci set network.wan.ipaddr='172.22.0.2'
 uci set network.wan.netmask='255.255.255.0'
 uci set network.wan.gateway='172.22.0.1'
 uci commit network
 
-uci set network.lan.proto='none'
-uci commit network
-
-# eth2 (QEMU user-netdev) konfigurieren
+# eth2 (QEMU user-netdev) fuer Host-Management konfigurieren
 uci set network.qemu=interface
-uci set network.qemu.ifname='eth2'
+uci set network.qemu.device='eth2'
 uci set network.qemu.proto='dhcp'
 uci commit network
 
-uci add network route
-uci set network.@route[-1].interface='qemu'
-uci set network.@route[-1].target='172.18.0.0'
-uci set network.@route[-1].netmask='255.255.255.0'
-uci set network.@route[-1].gateway='10.0.2.2'
-uci commit network
+uci -q delete firewall.qemu_zone
+uci set firewall.qemu_zone=zone
+uci set firewall.qemu_zone.name='qemu'
+uci add_list firewall.qemu_zone.network='qemu'
+uci set firewall.qemu_zone.input='REJECT'
+uci set firewall.qemu_zone.output='ACCEPT'
+uci set firewall.qemu_zone.forward='REJECT'
 
-uci add_list firewall.@zone[0].network='qemu'
+uci -q delete firewall.allow_ssh_wan
+uci set firewall.allow_ssh_wan=rule
+uci set firewall.allow_ssh_wan.name='Allow-SSH-WAN'
+uci set firewall.allow_ssh_wan.src='wan'
+uci set firewall.allow_ssh_wan.dest_port='22 2222'
+uci set firewall.allow_ssh_wan.proto='tcp'
+uci set firewall.allow_ssh_wan.target='ACCEPT'
+
+uci -q delete firewall.allow_ssh_qemu
+uci set firewall.allow_ssh_qemu=rule
+uci set firewall.allow_ssh_qemu.name='Allow-SSH-QEMU'
+uci set firewall.allow_ssh_qemu.src='qemu'
+uci set firewall.allow_ssh_qemu.dest_port='22 2222'
+uci set firewall.allow_ssh_qemu.proto='tcp'
+uci set firewall.allow_ssh_qemu.target='ACCEPT'
+
+uci -q delete firewall.allow_proxy_qemu
+uci set firewall.allow_proxy_qemu=rule
+uci set firewall.allow_proxy_qemu.name='Allow-Proxy-QEMU'
+uci set firewall.allow_proxy_qemu.src='qemu'
+uci set firewall.allow_proxy_qemu.dest_port='8080'
+uci set firewall.allow_proxy_qemu.proto='tcp'
+uci set firewall.allow_proxy_qemu.target='ACCEPT'
 uci commit firewall
+
+uci set dropbear.@dropbear[0].PasswordAuth='on'
+uci set dropbear.@dropbear[0].RootPasswordAuth='on'
+uci commit dropbear
 
 chmod +x /usr/bin/firmware-proxy /etc/init.d/firmware-proxy
 /etc/init.d/firmware-proxy enable
 /etc/init.d/firmware-proxy start
 
+chmod +x /etc/init.d/router-ssh
+/etc/init.d/dropbear disable
+/etc/init.d/router-ssh enable
+/etc/init.d/router-ssh start
+
 (echo "2003"; echo "2003") | passwd root
+
