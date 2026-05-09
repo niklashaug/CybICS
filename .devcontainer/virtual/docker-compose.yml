@@ -132,6 +132,9 @@ services:
         - action: sync+restart
           path: ../../software/landing/templates
           target: /CybICS/templates
+        - action: sync+restart
+          path: ../../software/open-wrt
+          target: /CybICS/scripts/open-wrt
         - action: sync
           path: ../../software/landing/static
           target: /CybICS/static

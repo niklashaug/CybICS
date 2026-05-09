@@ -3,11 +3,16 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CYBICS_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-CYBICS_COMPOSE="$CYBICS_DIR/.devcontainer/virtual/docker-compose.yml"
-CTF_OVERRIDE="$CYBICS_DIR/.devcontainer/virtual/docker-compose.ctf.yml"
+
+# When run via the landing UI container, CYBICS_COMPOSE_DIR and CYBICS_COMPOSE_FILE
+# are injected as environment variables (see landing service definition).
+# Fall back to computed paths when invoked manually from the workspace.
+_COMPOSE_DIR="${CYBICS_COMPOSE_DIR:-$CYBICS_DIR/.devcontainer/virtual}"
+CYBICS_COMPOSE_FILE="${CYBICS_COMPOSE_FILE:-$_COMPOSE_DIR/docker-compose.yml}"
+CTF_OVERRIDE="$_COMPOSE_DIR/docker-compose.ctf.yml"
 
 ROUTER_CONTAINER="${ROUTER_CONTAINER:-open-wrt-openwrt-1}"
-INT_NET="${INT_NET:-virtual_virt-cybics}" 
+INT_NET="${INT_NET:-virtual_virt-cybics}"
 EXT_NET="${EXT_NET:-ext_ctf}"
 EXT_SUBNET="172.22.0.0/24"
 EXT_GATEWAY="172.22.0.1"
@@ -53,6 +58,15 @@ wait_for_ssh() {
 do_start() {
     echo "Starting CTF router challenge..."
 
+    if [ ! -f "$CYBICS_COMPOSE_FILE" ]; then
+        echo "ERROR: Compose file not found: $CYBICS_COMPOSE_FILE"
+        exit 1
+    fi
+    if [ ! -f "$CTF_OVERRIDE" ]; then
+        echo "ERROR: CTF override file not found: $CTF_OVERRIDE"
+        exit 1
+    fi
+
     if ! docker network ls --format '{{.Name}}' | grep -q "^${INT_NET}$"; then
         echo "ERROR: Network '$INT_NET' not found. Start CybICS first."
         exit 1
@@ -63,18 +77,18 @@ do_start() {
     if [ -n "$attack" ]; then
         docker network disconnect "$EXT_NET" "$attack" 2>/dev/null || true
     fi
-    
+
     (cd "$SCRIPT_DIR" && docker compose down --remove-orphans --timeout 5 2>/dev/null) || true
     docker rm -f "$ROUTER_CONTAINER" 2>/dev/null || true
     docker network rm "$EXT_NET" 2>/dev/null || true
 
     echo "Restarting ICS stack in CTF mode..."
     docker compose \
-        -f "$CYBICS_COMPOSE" \
+        -f "$CYBICS_COMPOSE_FILE" \
         -f "$CTF_OVERRIDE" \
         --profile "$COMPOSE_PROFILES" \
         up -d --remove-orphans --force-recreate \
-        openplc fuxa hwio opcua s7com stm32 firmware-updater update-server landing
+        openplc fuxa hwio opcua s7com stm32 firmware-updater update-server
 
     docker network create \
         --driver bridge \
@@ -83,7 +97,7 @@ do_start() {
         "$EXT_NET"
 
     (cd "$SCRIPT_DIR" && docker compose --profile full up -d --build --remove-orphans)
-    
+
     docker network connect --ip "$ROUTER_INT_IP" "$INT_NET" "$ROUTER_CONTAINER" 2>/dev/null || true
 
     attack=$(find_container "$ATTACK_CONTAINER")
@@ -92,7 +106,7 @@ do_start() {
             || docker network connect --ip "$ATTACK_EXT_IP" "$EXT_NET" "$attack"
     fi
 
-    wait_for_ssh || echo "Warning: SSH not confirmed."
+    # wait_for_ssh || echo "Warning: SSH not confirmed."
 }
 
 do_stop() {
@@ -110,12 +124,12 @@ do_stop() {
 
     (cd "$SCRIPT_DIR" && docker compose down --remove-orphans --timeout 5 2>/dev/null) || true
     docker rm -f "$ROUTER_CONTAINER" 2>/dev/null || true
-    
+
     docker network rm "$EXT_NET" 2>/dev/null || true
 
     echo "Restarting ICS stack in normal mode (host ports restored)..."
     docker compose \
-        -f "$CYBICS_COMPOSE" \
+        -f "$CYBICS_COMPOSE_FILE" \
         --profile "$COMPOSE_PROFILES" \
         up -d --remove-orphans
 
