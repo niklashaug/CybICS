@@ -20,7 +20,7 @@ The firmware update channel is cryptographically protected — *or at least that
 
 Your mission: break into the gateway, take over the firmware update channel from the inside — and before the daemon asks again, be the answer.
 
-**The countdown is running. 30 seconds.** 
+**The countdown is running.** 
 
 ---
 
@@ -122,7 +122,7 @@ Explore the update server and determine which endpoints it offers and how reques
 
 Use a fuzzing tool of your choice to discover possible endpoints.
 
-One specific directory tells you everything: available endpoints, expected parameters — and the length of a certain secret.
+One specific endpoint tells you everything: available endpoints, expected parameters — and the length of a certain secret.
 
 > **Tip:** To reach the update server from your Kali network, you need a tunnel through the router. Check which SSH options can help with that.
 
@@ -163,10 +163,10 @@ Append your own payload to the firmware and calculate a valid MAC for it.
 <details>
 <summary>Hint</summary>
 
-The tool `hash_extender` is built exactly for this attack. You need:
+The tool [`hash_extender`](https://github.com/iagox86/hash_extender) is built exactly for this attack. You need:
 - the original MAC from Phase 5
 - the firmware from Phase 5
-- the key length (revealed by the API documentation)
+- the key length (16 bits)
 - your payload
 
 The result: a manipulated firmware file and a new MAC that the daemon will accept.
@@ -179,7 +179,7 @@ The result: a manipulated firmware file and a new MAC that the daemon will accep
 
 Every 30 seconds, the daemon queries: `update.cybics` — a hostname. This name is resolved by the router’s DNS. You control the router. That is enough.
 
-The elegant approach: run the rogue server not on your attacker machine, but *on the router itself*. The daemon asks localhost — and gets your firmware.
+Run the rogue server either on your attacker machine, or *on the router itself*.
 
 ### Task
 Copy your manipulated firmware and a server script to the router or attacker machine, start the rogue server, and redirect DNS resolution.
@@ -260,13 +260,6 @@ If everything works, you will see the flag in the logs of the `firmware-updater`
 
 </details>
 
----
-
-## Flag
-
-```
-CybICS(m4lic1Ous_FIRMwar3_update)
-```
 
 ---
 
