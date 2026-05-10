@@ -249,6 +249,8 @@ services:
     volumes:
       - firmware_data:/opt/cybics/update-server/firmware
       - firmware_secrets:/opt/cybics/secrets
+    dns:
+      - 172.18.0.50
     profiles:
       - firmware-update-environment
       - full
