@@ -1,40 +1,40 @@
 # Rogue Update
 
-> **Kategorie:** Advanced Security | **Punkte:** 500
+> **Category:** Advanced Security | **Points:** 500
 >
 > **MITRE ATT&CK for ICS:** `Impair Process Control / Modify Firmware` | `Initial Access / Valid Accounts` | `Discovery / Network Sniffing` | `Command and Control / Application Layer Protocol`
 
 ---
 
-## Das Szenario
+## The Scenario
 
-*Irgendwo in einer süddeutschen Kleinstadt brummt ein Verteilerkasten vor sich hin. Drinnen: ein STM32-Mikrocontroller, der seit Jahren brav seinen Dienst tut. Einmal im Monat — oder öfter, wenn der Hersteller einen Patch schiebt — lädt er sich automatisch neue Firmware vom internen Update-Server. Kein Mensch schaut zu. Der Daemon fragt einfach alle 30 Sekunden: „Gibt's was Neues für mich?"*
+*Somewhere in a small town in southern Germany, a distribution box hums quietly. Inside: an STM32 microcontroller that has dutifully done its job for years. Once a month — or more often if the vendor pushes a patch — it automatically downloads new firmware from the internal update server. No one watches. The daemon simply asks every 30 seconds: "Anything new for me?"*
 
-*Heute bist du die Antwort.*
-
----
-
-PhysLab Industries betreibt hinter einem OpenWrt-Gateway-Router ein internes OT-Netz. Das externe Wartungsnetz — eigentlich nur für den Außendienst gedacht — ist von außen erreichbar. Die Firewall-Regeln wurden „vorübergehend" gelockert, der Praktikant hat das Router-Passwort gesetzt und niemand hat es seitdem geändert.
-
-Der Firmware-Update-Kanal ist kryptografisch geschützt — *oder zumindest glaubt das die Entwicklerin, die ihn aufgebaut hat.* Der MAC wird beim Download mitgeliefert, der Daemon prüft ihn vor dem Flashen. Was sie übersehen hat: Das verwendete MAC-Schema hat eine bekannte Schwäche. Wer den MAC und die Länge des Secrets kennt, kann neue Payloads anhängen — ganz ohne den Schlüssel.
-
-Deine Mission: Einbruch in das Gateway, Übernahme des Firmware-Update-Kanals von innen heraus — und bevor der Daemon das nächste Mal fragt, bist du die Antwort.
-
-**Der Countdown läuft. 30 Sekunden.**
+*Today, you are the answer.*
 
 ---
 
-## Netzwerk-Topologie
+PhysLab Industries operates an internal OT network behind an OpenWrt gateway router. The external maintenance network — originally intended only for field technicians — is reachable from the outside. The firewall rules were "temporarily" loosened, an intern set the router password, and no one has changed it since.
+
+The firmware update channel is cryptographically protected — *or at least that’s what the developer who built it believes.* The MAC is delivered together with the download, and the daemon checks it before flashing. What she missed: the MAC scheme in use has a known weakness. If you know the MAC and the secret length, you can append new payloads — without knowing the key.
+
+Your mission: break into the gateway, take over the firmware update channel from the inside — and before the daemon asks again, be the answer.
+
+**The countdown is running. 30 seconds.**
+
+---
+
+## Network Topology
 
 ```
-Du (Kali / ext_ctf)
+You (Kali / ext_ctf)
 172.22.0.100
      |
      |  ext_ctf (172.22.0.0/24)
      |
 OpenWrt Router (QEMU in Docker)
-     extern:  172.22.0.2   (SSH :2222, HTTP :8080)
-     intern:  172.18.0.50  (Brücke ins ICS-Netz)
+     external: 172.22.0.2   (SSH :2222, HTTP :8080)
+     internal: 172.18.0.50  (Bridge into ICS network)
      |
      |  virtual_virt-cybics (172.18.0.0/24)
      |
@@ -48,174 +48,174 @@ OpenWrt Router (QEMU in Docker)
      +--- Update-Server 172.18.0.9
 ```
 
-Das interne ICS-Netz ist ohne Pivot über den Router **nicht erreichbar**.
+The internal ICS network is **not reachable** without pivoting through the router.
 
 ---
 
-## Angriffskette auf einen Blick
+## Attack Chain at a Glance
 
 ```
-Phase 1: Recon im externen Netz
-    → Router-IP und offene Ports finden
+Phase 1: Recon in the external network
+    → Find router IP and open ports
 
 Phase 2: Initial Access
-    → SSH-Brute-Force gegen den Router
+    → SSH brute-force against the router
 
-Phase 3: Traffic-Analyse auf dem Router
-    → Periodische Update-Anfragen belauschen und Ziel identifizieren
+Phase 3: Traffic analysis on the router
+    → Sniff periodic update requests and identify the target
 
-Phase 4: Update-Mechanismus analysieren
-    → API-Endpunkte erkunden, Dokumentation finden
+Phase 4: Analyze update mechanism
+    → Explore API endpoints, find documentation
 
-Phase 5: Firmware und MAC herunterladen
-    → Firmware-Image und originale MAC beschaffen
+Phase 5: Download firmware and MAC
+    → Obtain firmware image and original MAC
 
-Phase 6: MAC fälschen
-    → Length Extension Attack gegen MD5(secret || firmware)
+Phase 6: Forge MAC
+    → Length extension attack against MD5(secret || firmware)
 
-Phase 7: Manipulierte Firmware einschleusen
-    → Rogue-Server starten, DNS umbiegen
+Phase 7: Inject manipulated firmware
+    → Start rogue server, redirect DNS
 ```
 
 ---
 
 ## Phase 1 — Reconnaissance
 
-Du startest im `ext_ctf`-Netz (`172.22.0.0/24`). Die einzige Verbindung zur Außenwelt, die der Außendienst von PhysLab Industries nutzt — und die seit dem letzten Audit niemand mehr richtig gesperrt hat.
+You start in the `ext_ctf` network (`172.22.0.0/24`). The only externally reachable connection used by PhysLab Industries’ field service — and one that nobody has properly locked down since the last audit.
 
-### Aufgabe
-Scanne das externe Netz nach aktiven Hosts und offenen Diensten.
+### Task
+Scan the external network for active hosts and open services.
 
 <details>
-<summary>Hinweis</summary>
-Du solltest einen Host mit zwei offenen Diensten finden — darunter einen SSH-Dienst auf einem nicht-standardmäßigen Port.
+<summary>Hint</summary>
+You should find one host with two open services — including SSH on a non-standard port.
 </details>
 
 ---
 
-## Phase 2 — Initial Access: SSH-Brute-Force
+## Phase 2 — Initial Access: SSH Brute Force
 
-Der Router läuft auf OpenWrt. Das Root-Passwort hat ein Praktikant gesetzt — kurz, einprägsam, und in keiner Passwortrichtlinie je geprüft.
+The router runs OpenWrt. The root password was set by an intern — short, memorable, and never checked against any password policy.
 
-### Aufgabe
-Erlange per SSH-Brute-Force Zugang zum Router. Achte auf den richtigen Port.
+### Task
+Gain access to the router via SSH brute-force. Watch the correct port.
 
 <details>
-<summary>Hinweis</summary>
+<summary>Hint</summary>
 
-Das Passwort ist kurz. Du brauchst keine riesige Wörterbuchliste — eine kleine reicht. Schau, was auf deiner Kali-Maschine unter `/usr/share/dirb/wordlists/` bereitliegt.
+The password is short. You don’t need a huge wordlist — a small one is enough. Check what is available on your Kali machine under `/usr/share/dirb/wordlists/`.
 
-> **Tipp:** OpenWrt bringt `opkg` mit — den Paketmanager des Routers. Mit `opkg update && opkg install <paket>` lassen sich viele Tools nachinstallieren (z. B. `tcpdump`, `curl`, `python3`).
+> **Tip:** OpenWrt includes `opkg` — the router’s package manager. With `opkg update && opkg install <package>`, many tools can be installed afterward (e.g., `tcpdump`, `curl`, `python3`).
 
 </details>
 
 ---
 
-## Phase 3 — Traffic-Analyse auf dem Router
+## Phase 3 — Traffic Analysis on the Router
 
-Du bist auf dem Router. Von hier aus hast du Sicht ins interne ICS-Netz `172.18.0.0/24` — dein Angreifer-Laptop dagegen ist blind. Was hier fließt, bleibt hier.
+You are on the router. From here, you can see the internal ICS network `172.18.0.0/24` — your attacker laptop cannot. What flows here, stays here.
 
-Lausche dem Netzwerkverkehr auf der internen Schnittstelle. Irgendwas im Netz verhält sich seltsam — regelmäßig, alle 30 Sekunden.
+Listen to network traffic on the internal interface. Something in the network behaves strangely — regularly, every 30 seconds.
 
-### Aufgabe
-Identifiziere den internen Host, der periodische HTTP-Anfragen aussendet, und ermittle sein Ziel.
+### Task
+Identify the internal host that sends periodic HTTP requests and determine its target.
 
 <details>
-<summary>Hinweis</summary>
+<summary>Hint</summary>
 
 ```bash
-# Auf dem Router (via SSH):
+# On the router (via SSH):
 tcpdump -i <interface> -n
 ```
 
-Wireshark kann tcpdump-Streams live über eine SSH-Pipe verarbeiten — das macht die Analyse komfortabler.
+Wireshark can process tcpdump streams live over an SSH pipe — making analysis much more convenient.
 
-Du wirst feststellen, dass `172.18.0.8` in regelmäßigen Abständen versucht, einen bestimmten internen Server zu erreichen. Notiere dir IP und Port — das ist dein nächstes Ziel.
-
-</details>
-
----
-
-## Phase 4 — Update-Mechanismus analysieren
-
-Du kennst jetzt den Update-Server. Zeit, seine Oberfläche zu kartieren.
-
-Viele interne Server in OT-Umgebungen werden mit Entwickler-Defaults betrieben — inklusive interaktiver API-Dokumentation, die im Produktivbetrieb nichts verloren hat.
-
-### Aufgabe
-Erkunde den Update-Server und finde heraus, welche Endpunkte er anbietet und wie Anfragen aufgebaut sein müssen.
-
-<details>
-<summary>Hinweis</summary>
-
-Verwende ein Fuzzing-Tool deiner Wahl, um mögliche Endpunkte aufzuspüren.
-
-Ein bestimmtes Verzeichnis verrät dir alles: verfügbare Endpunkte, erwartete Parameter — und die Länge eines bestimmten Secrets.
-
-> **Tipp:** Um den Update-Server aus deinem Kali-Netz zu erreichen, brauchst du einen Tunnel durch den Router. Schau, welche SSH-Optionen dir dabei helfen können.
+You will notice that `172.18.0.8` repeatedly tries to reach a specific internal server. Note the IP and port — that is your next target.
 
 </details>
 
 ---
 
-## Phase 5 — Firmware und MAC herunterladen
+## Phase 4 — Analyze the Update Mechanism
 
-Der Server stellt Firmware-Images zum Download bereit. Beim Download passiert etwas Interessantes: Der Response enthält nicht nur die Firmware — er verrät auch etwas über den Verifikationsmechanismus.
+You now know the update server. Time to map its surface.
 
-### Aufgabe
-Lade die aktuelle Firmware herunter und extrahiere den MAC aus dem HTTP-Response.
+Many internal servers in OT environments run with developer defaults — including interactive API documentation that has no place in production.
+
+### Task
+Explore the update server and determine which endpoints it offers and how requests must be structured.
 
 <details>
-<summary>Hinweis</summary>
+<summary>Hint</summary>
+
+Use a fuzzing tool of your choice to discover possible endpoints.
+
+One specific directory tells you everything: available endpoints, expected parameters — and the length of a certain secret.
+
+> **Tip:** To reach the update server from your Kali network, you need a tunnel through the router. Check which SSH options can help with that.
+
+</details>
+
+---
+
+## Phase 5 — Download Firmware and MAC
+
+The server provides firmware images for download. During download, something interesting happens: the response includes not only the firmware — it reveals something about the verification mechanism.
+
+### Task
+Download the current firmware and extract the MAC from the HTTP response.
+
+<details>
+<summary>Hint</summary>
 
 ```bash
 curl http://172.18.0.9:<port>/api/v1/firmware/download/<version> \
      -D headers.txt -o firmware.bin
 ```
 
-Lies die Response-Header sorgfältig. Einer davon enthält den MAC-Wert, den der Daemon zur Verifikation einsetzt. Du wirst ihn brauchen.
+Read the response headers carefully. One of them contains the MAC value used by the daemon for verification. You will need it.
 
 </details>
 
 ---
 
-## Phase 6 — MAC fälschen: Length Extension Attack
+## Phase 6 — Forge the MAC: Length Extension Attack
 
-Die Firmware-Verifikation nutzt `MD5(secret || firmware)`. Das klingt sicher — ist es aber nicht.
+Firmware verification uses `MD5(secret || firmware)`. That sounds secure — but it isn’t.
 
-Das Schema ist anfällig für einen **Length Extension Attack**: Mit dem bekannten MAC und der Länge des Secrets kannst du einen gültigen MAC für `firmware || padding || dein_payload` erzeugen — *ganz ohne den Schlüssel zu kennen*.
+This scheme is vulnerable to a **length extension attack**: with the known MAC and the secret length, you can produce a valid MAC for `firmware || padding || your_payload` — *without ever knowing the key*.
 
-### Aufgabe
-Hänge einen eigenen Payload an die Firmware an und berechne einen gültigen MAC dafür.
+### Task
+Append your own payload to the firmware and calculate a valid MAC for it.
 
 <details>
-<summary>Hinweis</summary>
+<summary>Hint</summary>
 
-Das Tool `hash_extender` ist für genau diesen Angriff gebaut. Du brauchst:
-- den originalen MAC aus Phase 5
-- die Firmware aus Phase 5
-- die Schlüssellänge (die API-Dokumentation hat sie dir verraten)
-- deinen Payload
+The tool `hash_extender` is built exactly for this attack. You need:
+- the original MAC from Phase 5
+- the firmware from Phase 5
+- the key length (revealed by the API documentation)
+- your payload
 
-Das Ergebnis: eine manipulierte Firmware-Datei und ein neuer MAC, den der Daemon akzeptieren wird.
+The result: a manipulated firmware file and a new MAC that the daemon will accept.
 
 </details>
 
 ---
 
-## Phase 7 — Manipulierte Firmware einschleusen
+## Phase 7 — Inject the Manipulated Firmware
 
-Der Daemon fragt alle 30 Sekunden: `update.cybics` — ein Hostname. Dieser wird vom DNS des Routers aufgelöst. Du kontrollierst den Router. Das reicht.
+Every 30 seconds, the daemon queries: `update.cybics` — a hostname. This name is resolved by the router’s DNS. You control the router. That is enough.
 
-Der elegante Weg: Du startest den Rogue-Server nicht auf deiner Angreifer-Maschine, sondern *auf dem Router selbst*. Der Daemon fragt localhost — und bekommt deine Firmware.
+The elegant approach: run the rogue server not on your attacker machine, but *on the router itself*. The daemon asks localhost — and gets your firmware.
 
-### Aufgabe
-Kopiere deine manipulierte Firmware und ein Server-Skript auf den Router oder die Angreifer-Maschine, starte den Rogue-Server und biege die DNS-Auflösung um.
+### Task
+Copy your manipulated firmware and a server script to the router or attacker machine, start the rogue server, and redirect DNS resolution.
 
 <details>
-<summary>Hinweis</summary>
+<summary>Hint</summary>
 
-Du kannst den folgenden Python-HTTP-Servercode als Vorlage nutzen:
+You can use the following Python HTTP server code as a template:
 ```python
 import json
 import os
@@ -284,7 +284,7 @@ if __name__ == "__main__":
     ThreadingHTTPServer((host, port), Handler).serve_forever()
 ```
 
-Wenn alles klappt, siehst du die Flag in den Logs vom Docker-Container `firmware-updater`.
+If everything works, you will see the flag in the logs of the `firmware-updater` Docker container.
 
 </details>
 
@@ -300,26 +300,26 @@ CybICS(m4lic1Ous_FIRMwar3_update)
 
 ## Security Insights
 
-Diese Challenge illustriert eine Angriffskette, die sich so oder ähnlich in echten ICS-Umgebungen findet:
+This challenge illustrates an attack chain that can be found similarly in real ICS environments:
 
-| Schwachstelle                       | Auswirkung | Gegenmaßnahme |
+| Vulnerability                       | Impact | Mitigation |
 |-------------------------------------|---|---|
-| Schwaches Router-Passwort           | Initial Access per Brute-Force | Starke, einzigartige Credentials; keine Default-Passwörter |
-| `MD5(secret \|\| data)` als MAC     | Length Extension Attack ohne Key | HMAC verwenden (z. B. HMAC-SHA256) |
-| HTTP statt HTTPS für Updates        | Traffic-Analyse / Man-in-the-Middle | TLS mit Zertifikatsvalidierung |
-| Fehlende Firmware-Signatur          | Beliebige Firmware einschleusen | Asymmetrische Signaturen (z. B. Ed25519) + Secure Boot |
-| Exponierte API-Dokumentation        | Endpoint-Discovery vereinfacht | Produktion ohne `/docs`-Endpunkt deployen |
-| Zugriff auf Router | DNS-Spoofing möglich | Minimale Schreibrechte; Read-only-Rootfs |
+| Weak router password                | Initial access via brute-force | Strong, unique credentials; no default passwords |
+| `MD5(secret \|\| data)` as MAC      | Length extension attack without key | Use HMAC (e.g., HMAC-SHA256) |
+| HTTP instead of HTTPS for updates   | Traffic analysis / man-in-the-middle | TLS with certificate validation |
+| Missing firmware signature          | Arbitrary firmware injection | Asymmetric signatures (e.g., Ed25519) + secure boot |
+| Exposed API documentation           | Easier endpoint discovery | Deploy production without `/docs` endpoint |
+| Router access                       | DNS spoofing possible | Minimal write permissions; read-only root filesystem |
 
 ---
 
 ## MITRE ATT&CK for ICS Mapping
 
-| Taktik | Technik | Beschreibung |
+| Tactic | Technique | Description |
 |---|---|---|
-| Initial Access | Valid Accounts | SSH-Brute-Force gegen den Gateway-Router |
-| Discovery | Network Sniffing | tcpdump auf internem Router-Interface |
-| Discovery | Remote System Discovery | Erkundung des Update-Servers via ffuf |
-| Command and Control | Application Layer Protocol | HTTP-basierter Firmware-Update-Kanal |
-| Impair Process Control | Modify Firmware | Manipulation des Firmware-Images via Length Extension |
-| Execution | — | Ausführung über automatisierten Flash-Vorgang |
+| Initial Access | Valid Accounts | SSH brute-force against the gateway router |
+| Discovery | Network Sniffing | tcpdump on internal router interface |
+| Discovery | Remote System Discovery | Update server reconnaissance via ffuf |
+| Command and Control | Application Layer Protocol | HTTP-based firmware update channel |
+| Impair Process Control | Modify Firmware | Firmware image manipulation via length extension |
+| Execution | — | Execution through automated flashing process |
