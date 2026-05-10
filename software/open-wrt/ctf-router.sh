@@ -71,20 +71,6 @@ check_attack_vnc() {
     docker exec "$attack" sh -c "nc -z -w1 127.0.0.1 6081" >/dev/null 2>&1
 }
 
-ensure_router_tcpdump() {
-    local attack="$1"
-    [ -n "$attack" ] || return 1
-
-    docker exec "$attack" sh -c "which sshpass >/dev/null 2>&1" || return 1
-
-    docker exec "$attack" sh -c "sshpass -p 2003 ssh \
-        -o StrictHostKeyChecking=no \
-        -o UserKnownHostsFile=/dev/null \
-        -o LogLevel=ERROR \
-        root@$ROUTER_EXT_IP \
-        'tcpdump --version >/dev/null 2>&1 || (opkg update >/dev/null 2>&1 && (opkg install tcpdump-mini >/dev/null 2>&1 || opkg install tcpdump >/dev/null 2>&1))'"
-}
-
 compose_path_needs_volume_reset() {
     case "$CYBICS_COMPOSE_FILE" in
         /workspace/*|/CybICS/*) return 0 ;;
@@ -264,16 +250,6 @@ do_start() {
     configure_attack_ctf_routes "$attack" || echo "Warning: attack-machine CTF routes not configured."
 
     wait_for_attack_ssh "$attack" || echo "Warning: attack-machine SSH path not confirmed."
-
-    local attempt=1
-    while [ "$attempt" -le 30 ]; do
-        if ensure_router_tcpdump "$attack"; then
-            break
-        fi
-        attempt=$((attempt + 1))
-        sleep 2
-    done
-    [ "$attempt" -le 30 ] || echo "Warning: tcpdump not available on router."
 }
 
 do_stop() {
