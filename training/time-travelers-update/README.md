@@ -20,35 +20,7 @@ The firmware update channel is cryptographically protected — *or at least that
 
 Your mission: break into the gateway, take over the firmware update channel from the inside — and before the daemon asks again, be the answer.
 
-**The countdown is running. 30 seconds.**
-
----
-
-## Network Topology
-
-```
-You (Kali / ext_ctf)
-172.22.0.100
-     |
-     |  ext_ctf (172.22.0.0/24)
-     |
-OpenWrt Router (QEMU in Docker)
-     external: 172.22.0.2   (SSH :2222, HTTP :8080)
-     internal: 172.18.0.50  (Bridge into ICS network)
-     |
-     |  virtual_virt-cybics (172.18.0.0/24)
-     |
-     +--- HWIO          172.18.0.2
-     +--- OpenPLC       172.18.0.3
-     +--- FUXA HMI      172.18.0.4
-     +--- OPC-UA        172.18.0.5
-     +--- S7COM         172.18.0.6
-     +--- STM32         172.18.0.7
-     +--- Firmware-Upd. 172.18.0.8
-     +--- Update-Server 172.18.0.9
-```
-
-The internal ICS network is **not reachable** without pivoting through the router.
+**The countdown is running. 30 seconds.** 
 
 ---
 
