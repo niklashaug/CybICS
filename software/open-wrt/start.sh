@@ -62,6 +62,10 @@ if [ -n "$EXT_GATEWAY" ]; then
     ip -4 route replace default via "$EXT_GATEWAY" dev br-ext
 fi
 
+# Expose update-server upstream via QEMU host gateway (10.0.2.2:16689)
+# so the OpenWrt guest can always reach it, independent of TAP bridge quirks.
+/tmp/firmware-proxy 0.0.0.0 16689 172.18.0.9 6689 >/tmp/firmware-proxy-upstream.log 2>&1 &
+
 echo "Container-local TAP bridging enabled: $EXT_IFACE -> br-ext, $INT_IFACE -> br-int"
 
 ARCH=$(uname -m)

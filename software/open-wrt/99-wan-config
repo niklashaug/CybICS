@@ -50,7 +50,7 @@ uci -q delete firewall.allow_proxy_qemu
 uci set firewall.allow_proxy_qemu=rule
 uci set firewall.allow_proxy_qemu.name='Allow-Proxy-QEMU'
 uci set firewall.allow_proxy_qemu.src='qemu'
-uci set firewall.allow_proxy_qemu.dest_port='8080'
+uci set firewall.allow_proxy_qemu.dest_port='6689'
 uci set firewall.allow_proxy_qemu.proto='tcp'
 uci set firewall.allow_proxy_qemu.target='ACCEPT'
 uci commit firewall
@@ -68,12 +68,23 @@ chmod +x /etc/init.d/router-ssh
 /etc/init.d/router-ssh enable
 /etc/init.d/router-ssh start
 
+# Ensure packet capture is available for CTF participants using Wireshark/tcpdump.
+# Retry because firstboot networking can still be settling.
+for _attempt in 1 2 3 4 5; do
+	if opkg update >/dev/null 2>&1 && \
+	   (opkg install tcpdump-mini >/dev/null 2>&1 || opkg install tcpdump >/dev/null 2>&1); then
+		break
+	fi
+	sleep 2
+done
+
 # Default to the legitimate update server. Attackers can change this at runtime
 # via UCI on the OpenWrt guest.
 uci add_list dhcp.@dnsmasq[0].interface='qemu'
+uci add_list dhcp.@dnsmasq[0].interface='lan'
 uci set dhcp.@dnsmasq[0].nonwildcard='0'
 uci set dhcp.@dnsmasq[0].localservice='0'
-uci add_list dhcp.@dnsmasq[0].address='/update.cybics/172.18.0.9'
+uci add_list dhcp.@dnsmasq[0].address='/update.cybics/172.18.0.50'
 uci commit dhcp
 
 (echo "2003"; echo "2003") | passwd root
