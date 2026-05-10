@@ -6,7 +6,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app.py .
+COPY entrypoint.sh .
+RUN chmod +x /opt/cybics/update-server/entrypoint.sh \
+    && mkdir -p /opt/cybics/update-server/firmware /opt/cybics/secrets
 
 EXPOSE 6689
 
-CMD ["uvicorn", "app:create_app", "--factory", "--host", "0.0.0.0", "--port", "6689"]
+ENTRYPOINT ["/opt/cybics/update-server/entrypoint.sh"]

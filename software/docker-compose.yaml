@@ -107,9 +107,9 @@ services:
       - stm32
     volumes:
       - firmware_data:/opt/cybics/firmware
-      - firmware_keys:/opt/cybics/keys
+      - firmware_secrets:/opt/cybics/secrets
     environment:
-      - UPDATE_SERVER_URL=${UPDATE_SERVER_URL:-http://update.cybics:8080}
+      - UPDATE_SERVER_URL=${UPDATE_SERVER_URL:-http://update.cybics:6689}
       - OPENOCD_HOST=stm32
       - OPENOCD_TELNET_PORT=4444
     networks:
@@ -123,10 +123,10 @@ services:
     restart: unless-stopped
     environment:
       - FIRMWARE_VERSION=${FIRMWARE_VERSION:-1.2.1}
-      - FIRMWARE_MAC=${FIRMWARE_MAC:-extended-mac}
       - FIRMWARE_PATH=/opt/cybics/update-server/firmware/firmware.bin
     volumes:
       - firmware_data:/opt/cybics/update-server/firmware
+      - firmware_secrets:/opt/cybics/secrets
     ports:
       - "6689:6689"
     networks:
@@ -150,4 +150,4 @@ networks:
 volumes:
   fuxa_data:
   firmware_data:
-  firmware_keys:
+  firmware_secrets:

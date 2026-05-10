@@ -11,7 +11,17 @@ uci set network.qemu.ifname='eth2'
 uci set network.qemu.proto='dhcp'
 uci commit network
 
-uci add_list firewall.@zone[0].network='qemu'
+# Put qemu interface into LAN zone (input ACCEPT) so DNS requests from the
+# forwarded side are accepted.
+uci -q add_list firewall.lan.network='qemu' || uci add_list firewall.@zone[0].network='qemu'
 uci commit firewall
+
+# Default to the legitimate update server. Attackers can change this at runtime
+# via UCI on the OpenWrt guest.
+uci add_list dhcp.@dnsmasq[0].interface='qemu'
+uci set dhcp.@dnsmasq[0].nonwildcard='0'
+uci set dhcp.@dnsmasq[0].localservice='0'
+uci add_list dhcp.@dnsmasq[0].address='/update.cybics/172.18.0.9'
+uci commit dhcp
 
 (echo "2003"; echo "2003") | passwd root

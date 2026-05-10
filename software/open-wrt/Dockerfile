@@ -4,6 +4,7 @@ RUN apt-get update && apt-get install -y \
     wget \
     iproute2 \
     e2tools \
+    dnsmasq \
     python3 \
     && ARCH=$(dpkg --print-architecture) \
     && if [ "$ARCH" = "arm64" ]; then \
