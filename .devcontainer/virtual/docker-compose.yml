@@ -230,8 +230,6 @@ services:
       - OPENOCD_TELNET_PORT=4444
     dns:
       - 172.18.0.50
-    extra_hosts:
-      - "update.cybics:172.18.0.50"
     networks:
       virt-cybics:
         ipv4_address: 172.18.0.8
