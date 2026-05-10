@@ -124,7 +124,7 @@ services:
     restart: unless-stopped
     environment:
       - FIRMWARE_VERSION=${FIRMWARE_VERSION:-1.2.1}
-      - FIRMWARE_PATH=/opt/cybics/update-server/firmware/firmware.bin
+      - FIRMWARE_PATH=/opt/cybics/update-server/firmware/current.bin
     volumes:
       - firmware_data:/opt/cybics/update-server/firmware
       - firmware_secrets:/opt/cybics/secrets

@@ -21,7 +21,7 @@ def _get_firmware_version() -> str:
 def _get_firmware_path() -> Path:
     return Path(
         os.environ.get(
-            "FIRMWARE_PATH", "/opt/cybics/update-server/firmware/firmware.bin"
+            "FIRMWARE_PATH", "/opt/cybics/update-server/firmware/current.bin"
         )
     )
 

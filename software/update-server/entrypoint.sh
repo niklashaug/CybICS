@@ -3,7 +3,7 @@ set -e
 
 SECRET_FILE="${SECRET_PATH:-/opt/cybics/secrets/secret.bin}"
 SECRET_DIR="$(dirname "$SECRET_FILE")"
-FIRMWARE_FILE="${FIRMWARE_PATH:-/opt/cybics/update-server/firmware/firmware.bin}"
+FIRMWARE_FILE="${FIRMWARE_PATH:-/opt/cybics/update-server/firmware/current.bin}"
 FIRMWARE_DIR="$(dirname "$FIRMWARE_FILE")"
 
 mkdir -p "$SECRET_DIR" "$FIRMWARE_DIR"
