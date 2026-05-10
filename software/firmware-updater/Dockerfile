@@ -16,6 +16,6 @@ COPY entrypoint.sh .
 RUN chmod +x entrypoint.sh
 
 # Persistent directories (override via volume mounts)
-RUN mkdir -p /opt/cybics/firmware /opt/cybics/keys /opt/cybics/logs
+RUN mkdir -p /opt/cybics/firmware /opt/cybics/secrets /opt/cybics/logs
 
 ENTRYPOINT ["/opt/cybics/update-service/entrypoint.sh"]
