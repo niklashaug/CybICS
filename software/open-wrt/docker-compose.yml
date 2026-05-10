@@ -2,8 +2,6 @@ services:
   openwrt:
     ports:
         - "2222:2222"
-    environment:
-      - UPDATE_CYBICS_IP=${UPDATE_CYBICS_IP:-172.18.0.9}
     build:
       context: .
       dockerfile: Dockerfile
