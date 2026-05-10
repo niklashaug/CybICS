@@ -68,16 +68,6 @@ chmod +x /etc/init.d/router-ssh
 /etc/init.d/router-ssh enable
 /etc/init.d/router-ssh start
 
-# Ensure packet capture is available for CTF participants using Wireshark/tcpdump.
-# Retry because firstboot networking can still be settling.
-for _attempt in 1 2 3 4 5; do
-	if opkg update >/dev/null 2>&1 && \
-	   (opkg install tcpdump-mini >/dev/null 2>&1 || opkg install tcpdump >/dev/null 2>&1); then
-		break
-	fi
-	sleep 2
-done
-
 # Default to the legitimate update server. Attackers can change this at runtime
 # via UCI on the OpenWrt guest.
 uci add_list dhcp.@dnsmasq[0].interface='qemu'
