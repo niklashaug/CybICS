@@ -1,3 +1,13 @@
+FROM debian:bookworm-slim AS proxy-builder
+
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libc6-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY firmware-proxy.c /tmp/firmware-proxy.c
+RUN gcc -Os -static -s -o /tmp/firmware-proxy /tmp/firmware-proxy.c
+
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y \
@@ -29,11 +39,14 @@ RUN ARCH=$(dpkg --print-architecture) \
     fi
 
 COPY 99-wan-config /tmp/99-wan-config
+COPY firmware-proxy.init /tmp/firmware-proxy.init
+COPY router-ssh.init /tmp/router-ssh.init
+COPY --from=proxy-builder /tmp/firmware-proxy /tmp/firmware-proxy
 
 RUN ARCH=$(dpkg --print-architecture) \
     && if [ "$ARCH" = "arm64" ]; then SKIP=262656; else SKIP=33792; fi \
     && dd if=openwrt.img of=partition2.img bs=512 skip=$SKIP 2>/dev/null \
-    && printf 'cd /etc/uci-defaults\nwrite /tmp/99-wan-config 99-wan-config\n' | debugfs -w partition2.img \
+    && printf 'write /tmp/99-wan-config /etc/uci-defaults/99-wan-config\nwrite /tmp/firmware-proxy /usr/bin/firmware-proxy\nwrite /tmp/firmware-proxy.init /etc/init.d/firmware-proxy\nwrite /tmp/router-ssh.init /etc/init.d/router-ssh\n' | debugfs -w partition2.img \
     && dd if=partition2.img of=openwrt.img bs=512 seek=$SKIP conv=notrunc 2>/dev/null \
     && rm partition2.img
 

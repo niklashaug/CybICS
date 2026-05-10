@@ -1,35 +1,31 @@
 services:
   openwrt:
-    ports:
-        - "2222:2222"
     build:
       context: .
       dockerfile: Dockerfile
-    image: cybics-openwrt-test
+    image: cybics-openwrt-router
+    hostname: openwrt
+    restart: "no"
     stdin_open: true
     tty: true
     cap_add:
       - NET_ADMIN
     devices:
       - /dev/net/tun:/dev/net/tun
+    ports:
+      - "2222:2222"
     networks:
-      ext_net:
-        ipv4_address: 172.20.0.2
+      ext_ctf:
+        ipv4_address: 172.22.0.254
       virt-cybics:
-        ipv4_address: 172.21.0.2
+        ipv4_address: 172.18.0.254
+    profiles:
+      - firmware-update-environment
+      - full
 
 networks:
-  ext_net:
-    driver: bridge
-    driver_opts:
-      com.docker.network.bridge.name: br-ext
-    ipam:
-      config:
-        - subnet: 172.20.0.0/24
+  ext_ctf:
+    external: true
   virt-cybics:
-    driver: bridge
-    driver_opts:
-      com.docker.network.bridge.name: br-int
-    ipam:
-      config:
-        - subnet: 172.21.0.0/24
+    external: true
+    name: virtual_virt-cybics

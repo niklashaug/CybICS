@@ -277,6 +277,8 @@ stop_environment() {
         print_message "Error: Cannot access .devcontainer/virtual directory" "$RED"
         exit 1
     }
+
+    COMPOSE_PROFILES="*"
     $DOCKER_COMPOSE down
     if [ $? -eq 0 ]; then
         print_message "CybICS virtual environment stopped successfully!" "$GREEN"
@@ -414,7 +416,7 @@ case "$CYBICS_MODE" in
         export COMPOSE_PROFILES=""
         ;;
     "full")
-        export COMPOSE_PROFILES="full,attack,engineering,ai"
+        export COMPOSE_PROFILES="attack,engineering,ids,ai"
         ;;
     "withoutai")
         export COMPOSE_PROFILES="attack,engineering"
@@ -458,4 +460,4 @@ case "$COMMAND" in
     *)
         show_help
         ;;
-esac 
+esac

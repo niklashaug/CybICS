@@ -105,11 +105,12 @@ services:
     mem_limit: 64m
     depends_on:
       - stm32
+      - update-server
     volumes:
       - firmware_data:/opt/cybics/firmware
       - firmware_keys:/opt/cybics/keys
     environment:
-      - UPDATE_SERVER_URL=${UPDATE_SERVER_URL:-http://update.cybics:8080}
+      - UPDATE_SERVER_URL=${UPDATE_SERVER_URL:-http://172.18.0.50:8080}
       - OPENOCD_HOST=stm32
       - OPENOCD_TELNET_PORT=4444
     networks:
@@ -128,7 +129,7 @@ services:
     volumes:
       - firmware_data:/opt/cybics/update-server/firmware
     ports:
-      - "6689:6689"
+      - "6689:80"
     networks:
       br-cybics:
         ipv4_address: 172.18.0.9

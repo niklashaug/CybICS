@@ -7,10 +7,9 @@
 #   CONFIG_PATH         – path to this config file
 
 update_server:
-  # Base URL of the firmware update endpoint.
-  # Under normal CTF operation this server does not exist (returns 404).
-  # Attackers redirect this hostname to their rogue server.
-  url: "http://update.cybics:8080"
+  # Base URL of the firmware update endpoint. In the CTF environment this
+  # points at the OpenWrt proxy so HTTP traffic is visible on the router.
+  url: "http://172.18.0.50:8080"
   endpoint: "/api/v1/firmware/latest"
   # Polling interval in seconds
   poll_interval: 30
