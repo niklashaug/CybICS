@@ -19,11 +19,19 @@ bridge_iface() {
     bridge="$1"
     uplink="$2"
     tap="$3"
+    helper_cidr="${4:-}"
 
     ip link add name "$bridge" type bridge 2>/dev/null || true
     ip link set "$bridge" up
 
     if [ -n "$uplink" ]; then
+        # Keep routing functional: move the helper IP from the enslaved uplink
+        # to the bridge device before attaching the interface as bridge port.
+        if [ -n "$helper_cidr" ] && ip -o -4 addr show dev "$uplink" | awk '{print $4}' | grep -qx "$helper_cidr"; then
+            ip addr del "$helper_cidr" dev "$uplink" 2>/dev/null || true
+            ip addr add "$helper_cidr" dev "$bridge" 2>/dev/null || true
+        fi
+
         ip link set "$uplink" promisc on
         ip link set "$uplink" master "$bridge"
         ip link set "$uplink" up
@@ -39,6 +47,7 @@ create_tap tap1
 
 EXT_IFACE="$(find_iface_by_cidr "$EXT_HELPER_CIDR")"
 INT_IFACE="$(find_iface_by_cidr "$INT_HELPER_CIDR")"
+EXT_GATEWAY="$(ip -4 route show default dev "$EXT_IFACE" 2>/dev/null | awk '{print $3; exit}')"
 
 if [ -z "$EXT_IFACE" ] || [ -z "$INT_IFACE" ]; then
     echo "ERROR: could not find Docker uplinks for $EXT_HELPER_CIDR / $INT_HELPER_CIDR" >&2
@@ -48,6 +57,10 @@ fi
 
 bridge_iface br-ext "$EXT_IFACE" tap0 "$EXT_HELPER_CIDR"
 bridge_iface br-int "$INT_IFACE" tap1 "$INT_HELPER_CIDR"
+
+if [ -n "$EXT_GATEWAY" ]; then
+    ip -4 route replace default via "$EXT_GATEWAY" dev br-ext
+fi
 
 echo "Container-local TAP bridging enabled: $EXT_IFACE -> br-ext, $INT_IFACE -> br-int"
 
@@ -66,7 +79,7 @@ if [ "$ARCH" = "aarch64" ]; then
         -device virtio-net-pci,netdev=n0 \
         -netdev tap,id=n1,ifname=tap1,script=no,downscript=no \
         -device virtio-net-pci,netdev=n1 \
-        -netdev user,id=n2,hostfwd=tcp::2222-:22,hostfwd=tcp::6689-:6689,hostfwd=tcp::53-:53,hostfwd=udp::53-:53 \
+        -netdev user,id=n2,restrict=off,hostfwd=tcp::2222-:22,hostfwd=tcp::6689-:6689,hostfwd=tcp::53-:53,hostfwd=udp::53-:53 \
         -device virtio-net-pci,netdev=n2
 else
     exec qemu-system-x86_64 \
@@ -78,6 +91,6 @@ else
         -device e1000,netdev=n0 \
         -netdev tap,id=n1,ifname=tap1,script=no,downscript=no \
         -device e1000,netdev=n1 \
-        -netdev user,id=n2,hostfwd=tcp::2222-:22,hostfwd=tcp::6689-:6689,hostfwd=tcp::53-:53,hostfwd=udp::53-:53 \
+        -netdev user,id=n2,restrict=off,hostfwd=tcp::2222-:22,hostfwd=tcp::6689-:6689,hostfwd=tcp::53-:53,hostfwd=udp::53-:53 \
         -device e1000,netdev=n2
 fi
