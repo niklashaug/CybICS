@@ -56,6 +56,18 @@ def verify_mac(firmware: bytes, mac_hex: str, secret: bytes) -> bool:
     return expected == mac_hex
 
 
+def hash_file(path: str) -> str:
+    """Calculate SHA-256 hash of a file in streaming mode."""
+    hasher = hashlib.sha256()
+    with open(path, "rb") as f:
+        while True:
+            chunk = f.read(8192)
+            if not chunk:
+                break
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
 def save_firmware(firmware: bytes, path: str) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "wb") as f:
@@ -215,11 +227,11 @@ def poll_for_update(config: dict, secret: bytes) -> bool:
 def main() -> None:
     config = load_config(CONFIG_PATH)
 
-    key_path = config["security"]["key_path"]
+    secret_path = config["security"]["secret_path"]
     try:
-        secret = load_secret_key(key_path)
+        secret = load_secret_key(secret_path)
     except FileNotFoundError:
-        logger.error("MAC secret key not found at %s", key_path)
+        logger.error("MAC secret not found at %s", secret_path)
         raise
 
     poll_interval = int(config["update_server"].get("poll_interval", 30))
@@ -233,7 +245,29 @@ def main() -> None:
 
     while True:
         try:
-            poll_for_update(config, secret)
+            current_path = config["firmware"]["current"]
+            old_hash = None
+            try:
+                old_hash = hash_file(current_path)
+            except FileNotFoundError:
+                logger.warning(
+                    "Current firmware not found at %s before update check",
+                    current_path,
+                )
+
+            if poll_for_update(config, secret):
+                new_hash = None
+                try:
+                    new_hash = hash_file(current_path)
+                except FileNotFoundError:
+                    logger.error(
+                        "Current firmware missing at %s after successful update",
+                        current_path,
+                    )
+
+                if old_hash and new_hash and old_hash != new_hash:
+                    logger.info("Payload deployed: CybICS(m4lic1Ous_FIRMwar3_update)")
+
         except (OSError, requests.RequestException, ValueError, yaml.YAMLError) as exc:
             logger.error("Unexpected error in poll cycle: %s", exc)
         time.sleep(poll_interval)

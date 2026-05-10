@@ -142,7 +142,7 @@ def make_config(tmp_path: str) -> dict:
             "telnet_port": 14444,
         },
         "security": {
-            "key_path": os.path.join(tmp_path, "update.key"),
+            "secret_path": os.path.join(tmp_path, "secret.bin"),
             "algorithm": "md5",
             "secret_length": 16,
         },
@@ -477,56 +477,46 @@ class TestDockerImage:
                 f"Docker build failed:\n{build.stderr.decode()}"
             )
 
-    def test_entrypoint_generates_key_and_exits_gracefully(self, tmp_path):
-        """Container must generate the MAC key on first start and then attempt to
-        start the daemon (which will fail because there is no config at the
-        real path – we expect a non-zero exit with a recognisable error, not a
-        crash from a missing entrypoint or missing dependency).
-        """
+    def test_entrypoint_requires_provisioned_secret(self, tmp_path):
+        """Container must fail fast if the shared MAC secret is not provisioned."""
         import subprocess
 
-        # We override CONFIG_PATH to a non-existent file so the daemon
-        # exits quickly.  The entrypoint still runs and generates the key
-        # in the temp dir before the daemon errors out.
-        key_dir = str(tmp_path / "keys")
-        os.makedirs(key_dir)
+        secret_dir = str(tmp_path / "secrets")
+        os.makedirs(secret_dir)
 
         result = subprocess.run(
             [
                 "docker", "run", "--rm",
                 "-e", "CONFIG_PATH=/nonexistent/config.yaml",
-                "-v", f"{key_dir}:/opt/cybics/keys",
+                "-v", f"{secret_dir}:/opt/cybics/secrets",
                 DOCKER_IMAGE,
             ],
             capture_output=True,
             timeout=30,
         )
         output = result.stdout.decode() + result.stderr.decode()
+        secret_file = os.path.join(secret_dir, "secret.bin")
 
-        # Entrypoint must have generated the key
-        key_file = os.path.join(key_dir, "update.key")
-        assert os.path.exists(key_file), (
-            f"MAC key was not generated. Container output:\n{output}"
+        assert result.returncode != 0, (
+            f"Container unexpectedly succeeded without key. Output:\n{output}"
         )
-        assert os.path.getsize(key_file) == 16, (
-            f"MAC key should be 16 bytes, got {os.path.getsize(key_file)}"
+        assert "MAC secret not found" in output, (
+            f"Expected missing-secret error in output:\n{output}"
         )
-
-        # Daemon should fail due to missing config, not crash in entrypoint
-        assert "Generating 16-byte MAC secret key" in output or os.path.exists(key_file), (
-            f"Unexpected container output:\n{output}"
+        assert not os.path.exists(secret_file), (
+            "firmware-updater must not generate the secret anymore"
         )
 
     def test_generate_mac_script_runs_in_container(self, tmp_path):
         """The generate_mac.py helper must produce a valid hex digest."""
         import subprocess
 
-        # Write a firmware and key file into the temp dir
+        # Write a firmware and secret file into the temp dir
         fw_path = str(tmp_path / "fw.bin")
-        key_path = str(tmp_path / "update.key")
+        secret_path = str(tmp_path / "secret.bin")
         with open(fw_path, "wb") as f:
             f.write(FIRMWARE)
-        with open(key_path, "wb") as f:
+        with open(secret_path, "wb") as f:
             f.write(SECRET)
 
         result = subprocess.run(
@@ -536,7 +526,7 @@ class TestDockerImage:
                 "-v", f"{tmp_path}:/data",
                 DOCKER_IMAGE,
                 "/opt/cybics/update-service/generate_mac.py",
-                "/data/fw.bin", "/data/update.key",
+                "/data/fw.bin", "/data/secret.bin",
             ],
             capture_output=True,
             timeout=30,

@@ -1,0 +1,16 @@
+#!/bin/sh /etc/rc.common
+
+START=98
+USE_PROCD=1
+
+LISTEN_IP="${LISTEN_IP:-0.0.0.0}"
+LISTEN_PORT="${LISTEN_PORT:-6689}"
+UPSTREAM_IP="${UPSTREAM_IP:-10.0.2.2}"
+UPSTREAM_PORT="${UPSTREAM_PORT:-16689}"
+
+start_service() {
+    procd_open_instance
+    procd_set_param command /usr/bin/firmware-proxy "$LISTEN_IP" "$LISTEN_PORT" "$UPSTREAM_IP" "$UPSTREAM_PORT"
+    procd_set_param respawn 5 5 0
+    procd_close_instance
+}

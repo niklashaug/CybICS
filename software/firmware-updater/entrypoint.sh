@@ -1,20 +1,17 @@
 #!/bin/bash
 # CybICS Firmware Update Service – container entrypoint
 #
-# 1. Generates a random 16-byte MAC secret key on first run.
+# 1. Verifies that the shared MAC secret exists.
 # 2. Starts the Python update daemon.
 
 set -e
 
-KEY_FILE="/opt/cybics/keys/update.key"
-KEY_DIR="$(dirname "$KEY_FILE")"
+SECRET_FILE="/opt/cybics/secrets/secret.bin"
 
-if [ ! -f "$KEY_FILE" ]; then
-    echo "[entrypoint] Generating 16-byte MAC secret key..."
-    mkdir -p "$KEY_DIR"
-    dd if=/dev/urandom bs=16 count=1 of="$KEY_FILE" 2>/dev/null
-    chmod 600 "$KEY_FILE"
-    echo "[entrypoint] MAC key written to $KEY_FILE"
+if [ ! -f "$SECRET_FILE" ]; then
+    echo "[entrypoint] ERROR: MAC secret not found at $SECRET_FILE" >&2
+    echo "[entrypoint] ERROR: Provision the secret from update-server via shared volume." >&2
+    exit 1
 fi
 
 mkdir -p /opt/cybics/firmware /opt/cybics/logs

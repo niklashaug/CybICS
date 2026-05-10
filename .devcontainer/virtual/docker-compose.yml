@@ -117,6 +117,7 @@ services:
       - CYBICS_HEALTHCHECK_HOST=host.docker.internal
     volumes:
       - ../../.devcontainer:/workspace/.devcontainer:ro
+      - ../../software/open-wrt:/CybICS/scripts/open-wrt:ro
       - ${XDG_RUNTIME_DIR:-/var/run}/docker.sock:/var/run/docker.sock
     develop:
       watch:
@@ -132,6 +133,9 @@ services:
         - action: sync+restart
           path: ../../software/landing/templates
           target: /CybICS/templates
+        - action: sync+restart
+          path: ../../software/open-wrt
+          target: /CybICS/scripts/open-wrt
         - action: sync
           path: ../../software/landing/static
           target: /CybICS/static
@@ -216,18 +220,22 @@ services:
     restart: "no"
     depends_on:
       - stm32
+      - update-server
     volumes:
       - firmware_data:/opt/cybics/firmware
-      - firmware_keys:/opt/cybics/keys
+      - firmware_secrets:/opt/cybics/secrets
     environment:
-      - UPDATE_SERVER_URL=${UPDATE_SERVER_URL:-http://update.cybics:8080}
+      - UPDATE_SERVER_URL=${UPDATE_SERVER_URL:-http://update.cybics:6689}
       - OPENOCD_HOST=stm32
       - OPENOCD_TELNET_PORT=4444
+    dns:
+      - 172.18.0.50
     networks:
       virt-cybics:
         ipv4_address: 172.18.0.8
     profiles:
       - firmware-update-environment
+      - full
 
   update-server:
     image: mniedermaier1337/cybics-update-server:${CYBICS_VERSION:-latest}
@@ -237,12 +245,15 @@ services:
     restart: always
     environment:
       - FIRMWARE_VERSION=${FIRMWARE_VERSION:-1.2.1}
-      - FIRMWARE_MAC=${FIRMWARE_MAC:-extended-mac}
-      - FIRMWARE_PATH=/opt/cybics/update-server/firmware/firmware.bin
+      - FIRMWARE_PATH=/opt/cybics/update-server/firmware/current.bin
     volumes:
       - firmware_data:/opt/cybics/update-server/firmware
+      - firmware_secrets:/opt/cybics/secrets
+    dns:
+      - 172.18.0.50
     profiles:
       - firmware-update-environment
+      - full
     ports:
       - 6689:6689
     networks:
@@ -267,6 +278,7 @@ services:
         ipv4_address: 172.18.0.7
     profiles:
       - firmware-update-environment
+      - full
 
 networks:
   virt-cybics:
@@ -279,4 +291,4 @@ networks:
 
 volumes:
   firmware_data:
-  firmware_keys:
+  firmware_secrets:

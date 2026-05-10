@@ -160,12 +160,12 @@
           "description": "Exploit insecure firmware update mechanism",
           "points": 500,
           "tag": "exploit",
-          "flag": "CybICS(malicious_firmware_injected)",
+          "flag": "CybICS(m4lic1Ous_FIRMwar3_update)",
           "hint": "Analyze firmware updates and manipulate them",
           "training_content": "training/time-travelers-update/README.md",
           "lifecycle": {
             "enabled": true,
-            "display_name": "OpenWRT Firmware Update Environment",
+            "display_name": "Firmware Update Environment",
             "compose_profile": "firmware-update-environment",
             "compose_services": ["firmware-updater", "update-server", "stm32"],
             "start": {
